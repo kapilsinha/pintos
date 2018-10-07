@@ -28,9 +28,16 @@ struct TokenPair tokenize(char * command) {
     int start_index = 0;
     int end_index = 0;
     int in_quotes = 0; // 1 if current character is within quotes, else 0
+    // 1 if string that has been tokenized in the current iteration of the
+    // parsing loop or is to be tokenized next is double-quoted, else 0
+    int double_quoted = 0;
+    // 1 if a string has been tokenized in the current iteration of the parsing
+    // loop, else 0
+    int tokenized = 0;
     // Max number of tokens is MAX_COMMAND_LENGTH
     char **tokens = (char **) malloc(MAX_COMMAND_LENGTH * sizeof(char *));
     int num_tokens = 0;
+    // Parsing loop
     for (int i = 0; i < strlen(command); i++) {
         // If character is in quotes, ignore any redirections or pipes
         if (in_quotes && command[i] != '\"') {
@@ -54,26 +61,39 @@ struct TokenPair tokenize(char * command) {
                 }
                 else {
                     in_quotes = 1;
+                    double_quoted = 1;
                 }
             }
 
             if (end_index > start_index) { // Tokenize [start_index, end_index)
+                char *src;
+                size_t len;
+                if (double_quoted) {
+                    src = command + start_index + 1;
+                    len = end_index - start_index - 2;
+                }
+                else {
+                    src = command + start_index;
+                    len = end_index - start_index;
+                }
                 tokens[num_tokens] = (char *)
-                    malloc ((end_index - start_index) * sizeof(char));
-                strncpy(tokens[num_tokens], command + start_index,
-                    end_index - start_index);
+                    malloc ((len + 1) * sizeof(char));
+                strncpy(tokens[num_tokens], src, len);
                 // Need to manually null terminate these strings
-                tokens[num_tokens][end_index - start_index] = '\0';
+                tokens[num_tokens][len] = '\0';
                 num_tokens += 1;
+                tokenized = 1;
             }
 
             // Also tokenize the redirects and pipes
-            if (command[i] == '>' || command[i] == '<' || command[i] == '|') {
+            if ((command[i] == '>' || command[i] == '<' || command[i] == '|')
+                && !double_quoted) {
                 tokens[num_tokens] = (char *) malloc (2 * sizeof(char));
                 strncpy(tokens[num_tokens], command + i, 1);
                 // Need to manually null terminate these strings
                 tokens[num_tokens][1] = '\0';
                 num_tokens += 1;
+                tokenized = 1;
             }
             if (command[i] == '\"') {
                 start_index = end_index;
@@ -85,6 +105,10 @@ struct TokenPair tokenize(char * command) {
         }
         else {
             end_index += 1;
+        }
+        if (tokenized) {
+            tokenized = 0;
+            double_quoted = 0;
         }
     }
     struct TokenPair pair;
