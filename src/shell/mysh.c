@@ -2,6 +2,7 @@
 #include <stdio.h>
 #include <unistd.h>
 #include <string.h>
+#include <pwd.h>
 
 // We are told to assume the command is less than 1 KiB
 #define MAX_COMMAND_LENGTH 1024
@@ -93,11 +94,10 @@ struct TokenPair tokenize(char * command) {
 }
 
 int main() {
-    // Print prompt (TODO: fix outputting the username
-    // - currently getlogin() returns NULL)
+    // Print prompt
     char cwd[MAX_PATH_SIZE];
     getcwd(cwd, sizeof(cwd));
-    printf("%s:%s> ", getlogin(), cwd); 
+    printf("%s:%s> ", getpwuid(getuid())->pw_name, cwd);
 
     char command [MAX_COMMAND_LENGTH];
     fgets(command, MAX_COMMAND_LENGTH, stdin);
