@@ -64,7 +64,7 @@ TokenPair tokenize(char * command) {
 
             if (end_index > start_index) { // Tokenize [start_index, end_index)
                 tokens[num_tokens] = (char *)
-                    malloc ((end_index - start_index) * sizeof(char));
+                    malloc ((end_index - start_index + 1) * sizeof(char));
                 strncpy(tokens[num_tokens], command + start_index,
                     end_index - start_index);
                 // Need to manually null terminate these strings
