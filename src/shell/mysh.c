@@ -3,6 +3,7 @@
 #include <unistd.h>
 #include <string.h>
 #include <pwd.h>
+#include <fcntl.h>
 
 // We are told to assume the command is less than 1 KiB
 #define MAX_COMMAND_LENGTH 1024
@@ -175,7 +176,20 @@ Commands generate_commands(TokenPair pair) {
             strncpy(filename, src, len);
             filename[len] = '\0';
 
-            // TODO: Finish setting up the redirection with the file
+            // Just set the input or output to the file descriptor and change
+            // stdin or stdout later when executing the process
+            int in_fd, out_fd;
+            if (input_redirection) {
+                in_fd = open(filename, O_RDONLY);
+                commands.commands[k].input = in_fd;
+            }
+
+            if (output_redirection) {
+                out_fd = open(filename, O_CREAT | O_TRUNC | O_WRONLY, 0);
+                commands.commands[k].output = out_fd;
+            }
+
+            // TODO: Take care of pipes
         }
         else {
             char *src;
@@ -209,7 +223,7 @@ int main() {
 
     char command [MAX_COMMAND_LENGTH];
     fgets(command, MAX_COMMAND_LENGTH, stdin);
-    
+
     TokenPair pair = tokenize(command);
     Commands commands = generate_commands(pair);
     int num_commands = commands.num_commands;
