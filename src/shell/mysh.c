@@ -4,6 +4,8 @@
 #include <string.h>
 #include <pwd.h>
 #include <fcntl.h>
+#include <errno.h>
+#include <sys/wait.h>
 
 // We are told to assume the command is less than 1 KiB
 #define MAX_COMMAND_LENGTH 1024
@@ -180,12 +182,12 @@ Commands generate_commands(TokenPair pair) {
             // stdin or stdout later when executing the process
             int in_fd, out_fd;
             if (input_redirection) {
-                in_fd = open(filename, O_RDONLY);
+                in_fd = open(filename, O_RDONLY, S_IRUSR | S_IWUSR);
                 commands.commands[k].input = in_fd;
             }
 
             if (output_redirection) {
-                out_fd = open(filename, O_CREAT | O_TRUNC | O_WRONLY, 0);
+                out_fd = open(filename, O_CREAT | O_TRUNC | O_WRONLY, S_IRUSR | S_IWUSR);
                 commands.commands[k].output = out_fd;
             }
 
@@ -215,12 +217,22 @@ Commands generate_commands(TokenPair pair) {
     return commands;
 }
 
+int execute_command(Command command) {
+    dup2(command.input, STDIN_FILENO);
+    dup2(command.output, STDOUT_FILENO);
+    execvp(command.args[0], command.args);
+    close(command.input);
+    close(command.output);
+    // int err = errno; 
+    perror("Error in executing command");
+    return 1;
+}
+
 int main() {
     // Print prompt
     char cwd[MAX_PATH_SIZE];
     getcwd(cwd, sizeof(cwd));
-    printf("%s:%s> ", getpwuid(getuid())->pw_name, cwd);
-
+    printf("%s:%s> ", getpwuid(getuid())->pw_name, cwd); 
     char command [MAX_COMMAND_LENGTH];
     fgets(command, MAX_COMMAND_LENGTH, stdin);
 
@@ -228,6 +240,7 @@ int main() {
     Commands commands = generate_commands(pair);
     int num_commands = commands.num_commands;
     Command *commands_arr = commands.commands;
+    
     printf("Number of commands: %d\n", num_commands);
     printf("========================================"
            "========================================\n");
@@ -240,9 +253,36 @@ int main() {
         for (int j = 0; j < commands_arr[i].num_args; j++) {
             printf("%s\n", commands_arr[i].args[j]);
         }
+        printf("\n");
         if (i < num_commands - 1) {
             printf("----------------------------------------"
                    "----------------------------------------\n");
         }
+
+    pid_t pid;
+    int status;
+    int command_index = 0;
+    // TODO: CURRENTLY THIS ONLY RUNS THE FIRST COMMAND (WITH COMMAND_INDEX)
+    // FIX THIS WHEN YOU DO THE PIPING BY LOOPING OVER COMMANDS
+    if ((pid = fork()) < 0) {
+        printf("Failed to fork process");
+        exit(1);
     }
+    else if (pid == 0) { // Child process
+        execute_command(commands_arr[command_index]);
+    }
+    else { // Parent process
+        wait(&status);
+        int input_file_desc = commands_arr[command_index].input;
+        int output_file_desc = commands_arr[command_index].output;
+        printf("Input file descriptor: %d\n", input_file_desc);
+        printf("Output file descriptor: %d\n", output_file_desc);
+        close(input_file_desc);
+        close(output_file_desc);
+        // main(); // not sure why we can't do this -
+        // seems to make the program hang on the wait(&status) line somehow
+    }
+
+
+    
 }
