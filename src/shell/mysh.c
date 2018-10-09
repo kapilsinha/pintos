@@ -32,7 +32,7 @@ typedef struct token_pair {
     char **tokens;
 } TokenPair;
 
-TokenPair tokenize(char * command) {
+TokenPair tokenize(char *command) {
     int start_index = 0;
     int end_index = 0;
     int in_quotes = 0; // 1 if current character is within quotes, else 0
@@ -221,26 +221,23 @@ int execute_command(Command command) {
     dup2(command.input, STDIN_FILENO);
     dup2(command.output, STDOUT_FILENO);
     execvp(command.args[0], command.args);
-    close(command.input);
-    close(command.output);
-    // int err = errno; 
+    // int err = errno;
     perror("Error in executing command");
-    return 1;
+    return 0;
 }
 
-int main() {
+void shell() {
     // Print prompt
     char cwd[MAX_PATH_SIZE];
     getcwd(cwd, sizeof(cwd));
-    printf("%s:%s> ", getpwuid(getuid())->pw_name, cwd); 
+    printf("%s:%s> ", getpwuid(getuid())->pw_name, cwd);
     char command [MAX_COMMAND_LENGTH];
     fgets(command, MAX_COMMAND_LENGTH, stdin);
-
     TokenPair pair = tokenize(command);
     Commands commands = generate_commands(pair);
     int num_commands = commands.num_commands;
     Command *commands_arr = commands.commands;
-    
+
     printf("Number of commands: %d\n", num_commands);
     printf("========================================"
            "========================================\n");
@@ -258,31 +255,55 @@ int main() {
             printf("----------------------------------------"
                    "----------------------------------------\n");
         }
+    }
 
     pid_t pid;
     int status;
     int command_index = 0;
+    
     // TODO: CURRENTLY THIS ONLY RUNS THE FIRST COMMAND (WITH COMMAND_INDEX)
     // FIX THIS WHEN YOU DO THE PIPING BY LOOPING OVER COMMANDS
+
+    // Check if this is an internal change dir command
+    if (strcmp(commands_arr[command_index].args[0], "cd") == 0) {
+        // TODO: Need to handle errors here
+        if (commands_arr[command_index].args[1] == NULL ||
+            strcmp(commands_arr[command_index].args[1], "~") == 0) {
+            chdir(getenv("HOME"));
+        }
+        else {
+            chdir(commands_arr[command_index].args[1]);
+        }
+        return;
+    }
+
+    // Check if this is an internal exit command
+    if (strcmp(commands_arr[command_index].args[0], "exit") == 0) {
+        exit(0);
+    }
+
+    // If not an internal command, fork
     if ((pid = fork()) < 0) {
         printf("Failed to fork process");
         exit(1);
     }
     else if (pid == 0) { // Child process
         execute_command(commands_arr[command_index]);
+        int input_file_desc = commands_arr[command_index].input;
+        int output_file_desc = commands_arr[command_index].output;
+        close(input_file_desc);
+        close(output_file_desc);
     }
     else { // Parent process
         wait(&status);
-        int input_file_desc = commands_arr[command_index].input;
-        int output_file_desc = commands_arr[command_index].output;
-        printf("Input file descriptor: %d\n", input_file_desc);
-        printf("Output file descriptor: %d\n", output_file_desc);
-        close(input_file_desc);
-        close(output_file_desc);
-        // main(); // not sure why we can't do this -
-        // seems to make the program hang on the wait(&status) line somehow
+        printf("go back to main\n");
+        return;
     }
+}
 
-
-    
+int main() {
+    while (1) {
+        shell();
+    }
+    return 0;
 }
