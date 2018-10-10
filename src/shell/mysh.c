@@ -219,7 +219,6 @@ Commands generate_commands(TokenPair pair) {
 int execute_command(Command command) {
     dup2(command.input, STDIN_FILENO);
     dup2(command.output, STDOUT_FILENO);
-    printf("Changed IO shit in exec\n");
     execvp(command.args[0], command.args);
     // int err = errno;
     perror("Error in executing command");
@@ -238,24 +237,26 @@ void shell() {
     int num_commands = commands.num_commands;
     Command *commands_arr = commands.commands;
 
-    // printf("Number of commands: %d\n", num_commands);
-    // printf("========================================"
-    //        "========================================\n");
-    // for (int i = 0; i < num_commands; i++) {
-    //     printf("Input: %d\n\n", commands_arr[i].input);
-    //     printf("Output: %d\n\n", commands_arr[i].output);
-    //     printf("Error: %d\n\n", commands_arr[i].error);
-    //     printf("Number of arguments: %d\n\n", commands_arr[i].num_args);
-    //     printf("Arguments:\n");
-    //     for (int j = 0; j < commands_arr[i].num_args; j++) {
-    //         printf("%s\n", commands_arr[i].args[j]);
-    //     }
-    //     printf("\n");
-    //     if (i < num_commands - 1) {
-    //         printf("----------------------------------------"
-    //                "----------------------------------------\n");
-    //     }
-    // }
+    /*
+    printf("Number of commands: %d\n", num_commands);
+    printf("========================================"
+           "========================================\n");
+    for (int i = 0; i < num_commands; i++) {
+        printf("Input: %d\n\n", commands_arr[i].input);
+        printf("Output: %d\n\n", commands_arr[i].output);
+        printf("Error: %d\n\n", commands_arr[i].error);
+        printf("Number of arguments: %d\n\n", commands_arr[i].num_args);
+        printf("Arguments:\n");
+        for (int j = 0; j < commands_arr[i].num_args; j++) {
+            printf("%s\n", commands_arr[i].args[j]);
+        }
+        printf("\n");
+        if (i < num_commands - 1) {
+            printf("----------------------------------------"
+                   "----------------------------------------\n");
+        }
+    }
+    */
 
     pid_t pid;
     int status;
@@ -300,67 +301,64 @@ void shell() {
     }
     // Need to loop over commands and pipe
     else {
-        int fd_old[2];
-        int fd_new[2];
+        int fd[2];
         // There was an error opening the pipe
-        if (pipe(fd_new) == -1) {
+        if (pipe(fd) == -1) {
             perror("Failed to open pipe");
         }
-        if (pipe(fd_old) == -1) {
-            perror("Failed to open pipe");
+        for (command_index = 0; command_index < num_commands; command_index++) {
+            // This is the first command
+            if (command_index == 0) {
+                // Set command to write to write end of the pipe
+                commands_arr[command_index].output = fd[1];
+            }
+
+            // This if the last command
+            else if (command_index == num_commands - 1) {
+                // Set command to only read from read end of the pipe
+                commands_arr[command_index].input = fd[0];
+            }
+
+            /* This command is in the middle so reads from old pipe and
+               writes to a different new pipe. */
+            // TODO: Handle several pipes (not just two)
+            else {
+                printf("Well motherfucker this shit aint work so boo hoo\n");
+            }
+
+            // Fork and execute the command
+            if ((pid = fork()) < 0) {
+                printf("Failed to fork process");
+                exit(1);
+            }
+            else if (pid == 0) { // Child process
+                // printf("Executing command.");
+                execute_command(commands_arr[command_index]);
+                // Nothing below this in this "else if" statement runs I think
+                printf("Executed command. This never gets printed...");
+                close(fd[1]);
+                close(fd[0]);
+                // TODO: Figure out how to close pipes and input/output
+                // redirects when a command has both
+                //close(commands_arr[command_index].input);
+                //close(commands_arr[command_index].output);
+                if (command_index == num_commands - 1) {
+                    printf("Last command\n");
+                }
+            }
+            else { // Parent process
+                // Close read and write for the parent since the shell will 
+                // never write to the pipe
+                close(fd[1]); // LOL THIS FIXES PROBLEMS. WHY NOT CLOSE BOTH ENDS OR CLOSE NOTHING?????
+                // printf("%s\n", "parent waiting");
+                wait(&status);
+                // printf("%s\n", "parent done waiting");
+                // printf("Command index %d\n", command_index);
+            }
         }
-        for (command_index = 0; command_index < num_commands;
-            command_index++) {
-                // This is the first command
-                if (command_index == 0) {
-                    // Set command to write to write end of the pipe
-                    commands_arr[command_index].output = fd_new[1];
-                }
-
-                // This if the last command
-                else if (command_index == num_commands - 1) {
-                    // Set command to only read from read end of the pipe
-                    commands_arr[command_index].input = fd_old[0];
-                }
-
-                /* This command is in the middle so reads from old pipe and
-                writes to a different new pipe. */
-                else {
-                    printf("Well motherfucker this shit aint work so boo hoo\n");
-                }
-
-                // Fork and execute the command
-                if ((pid = fork()) < 0) {
-                    printf("Failed to fork process");
-                    exit(1);
-                }
-                else if (pid == 0) { // Child process
-                    // Never write to old pipe or read from new pipe
-                    // close(fd_old[1]);
-                    // close(fd_new[0]);
-                    execute_command(commands_arr[command_index]);
-                    close(commands_arr[command_index].input);
-                    close(commands_arr[command_index].output);
-                    if (command_index == num_commands - 1) {
-                        printf("Last command\n");
-                    }
-                }
-                else { // Parent process
-                    printf("%s\n", "parent waiting");
-                    // wait(&status);
-                    printf("%s\n", "parent done waiting");
-                    // Create new pipe
-                    memcpy(fd_old, fd_new, sizeof(fd_old));
-                    pipe(fd_new);
-                    /* Close read and write for the parent since the shell will
-                    never write to the pipe. */
-                    close(fd_new[0]);
-                    close(fd_new[1]);
-                    printf("Command index %d\n", command_index);
-                }
-
-        }
-        printf("Done with for loop\n");
+        // printf("Done with for loop\n");
+        close(fd[0]);
+        close(fd[1]);
         return;
     }
 }
@@ -369,6 +367,5 @@ int main() {
     while (1) {
         shell();
     }
-    shell();
     return 0;
 }
