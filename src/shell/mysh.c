@@ -323,7 +323,8 @@ void shell() {
                writes to a different new pipe. */
             // TODO: Handle several pipes (not just two)
             else {
-                printf("Well motherfucker this shit aint work so boo hoo\n");
+                commands_arr[command_index].input = fd[0];
+                commands_arr[command_index].output = fd[1];
             }
 
             // Fork and execute the command
@@ -347,7 +348,7 @@ void shell() {
                 }
             }
             else { // Parent process
-                // Close read and write for the parent since the shell will 
+                // Close read and write for the parent since the shell will
                 // never write to the pipe
                 close(fd[1]); // LOL THIS FIXES PROBLEMS. WHY NOT CLOSE BOTH ENDS OR CLOSE NOTHING?????
                 // printf("%s\n", "parent waiting");
