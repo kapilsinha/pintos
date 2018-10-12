@@ -32,12 +32,20 @@ typedef struct token_pair {
     char **tokens;
 } TokenPair;
 
+void malloc_error() {
+    fprintf(stderr, "Memory allocation failed.  Exiting.\n");
+    exit(1);
+}
+
 TokenPair tokenize(char *command) {
     int start_index = 0;
     int end_index = 0;
     int in_quotes = 0; // 1 if current character is within quotes, else 0
     // Max number of tokens is MAX_COMMAND_LENGTH
     char **tokens = (char **) malloc(MAX_COMMAND_LENGTH * sizeof(char *));
+    if (tokens == NULL) {
+        malloc_error("tokens");
+    }
     int num_tokens = 0;
     int i = 0;
     while (i < strlen(command)) {
@@ -70,6 +78,10 @@ TokenPair tokenize(char *command) {
             if (end_index > start_index) { // Tokenize [start_index, end_index)
                 tokens[num_tokens] = (char *)
                     malloc ((end_index - start_index + 1) * sizeof(char));
+                if (tokens[num_tokens] == NULL) {
+                    free(tokens);
+                    malloc_error();
+                }
                 strncpy(tokens[num_tokens], command + start_index,
                     end_index - start_index);
                 // Need to manually null terminate these strings
@@ -82,6 +94,10 @@ TokenPair tokenize(char *command) {
                 // Find instances of >>
                 if (i < strlen(command) - 1 && command[i + 1] == '>') {
                     tokens[num_tokens] = (char *) malloc (3 * sizeof(char));
+                    if (tokens[num_tokens] == NULL) {
+                        free(tokens);
+                        malloc_error();
+                    }
                     strncpy(tokens[num_tokens], command + i, 2);
                     // Need to manually null terminate these strings
                     tokens[num_tokens][2] = '\0';
@@ -90,6 +106,10 @@ TokenPair tokenize(char *command) {
                 }
                 else {
                     tokens[num_tokens] = (char *) malloc (2 * sizeof(char));
+                    if (tokens[num_tokens] == NULL) {
+                        free(tokens);
+                        malloc_error();
+                    }
                     strncpy(tokens[num_tokens], command + i, 1);
                     // Need to manually null terminate these strings
                     tokens[num_tokens][1] = '\0';
@@ -130,6 +150,10 @@ Commands generate_commands(TokenPair pair) {
     commands.commands = (Command *)
                         malloc(commands.num_commands * sizeof(Command));
 
+    if (commands.commands == NULL) {
+        malloc_error();
+    }
+    
     for (int i = 0; i < commands.num_commands; i++) {
         commands.commands[i].input = STDIN_FILENO;
         commands.commands[i].output = STDOUT_FILENO;
@@ -157,6 +181,13 @@ Commands generate_commands(TokenPair pair) {
         commands.commands[i].args = (char **)
                                     malloc((commands.commands[i].num_args + 1)
                                            * sizeof(char *));
+        if (commands.commands[i].args == NULL) {
+            for (int j = 0; j < i; j++) {
+                free(commands.commands[j].args);
+            }
+            free(commands.commands);
+            malloc_error();
+        }
     }
     int k = 0;
     int l = 0;
@@ -245,6 +276,15 @@ Commands generate_commands(TokenPair pair) {
             }
             commands.commands[k].args[l] = (char *)
                                             malloc((len + 1) * sizeof(char));
+            
+            if (commands.commands[k].args[l] == NULL) {
+                for (int m = 0; m < commands.num_commands; m++) {
+                    free(commands.commands[m].args);
+                }
+                free(commands.commands);
+                malloc_error();
+            }
+            
             strncpy(commands.commands[k].args[l], src, len);
             commands.commands[k].args[l][len] = '\0';
             l += 1;
