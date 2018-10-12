@@ -452,6 +452,7 @@ void shell() {
             else if (pid == 0) { // Child process
                 // printf("Executing command.");
                 execute_command(commands_arr[command_index]);
+                exit(1);
             }
             else { // Parent process
                 // Close write for the parent since the shell will
