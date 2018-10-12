@@ -427,7 +427,12 @@ void shell() {
     // Need to loop over commands and pipe
     else {
         int fd[2];
+        int prev_fd_to_close = -1;
         for (command_index = 0; command_index < num_commands; command_index++) {
+            if (command_index > 0) {
+                close(prev_fd_to_close);
+            }
+            
             // There was an error opening the pipe
             if (pipe(fd) == -1) {
                 perror("pipe()");
@@ -448,6 +453,7 @@ void shell() {
                 exit(1);
             }
             else if (pid == 0) { // Child process
+                close(fd[0]);
                 execute_command(commands_arr[command_index]);
                 // Only if execute_command failed (already printed error
                 // message) - exit out of the child process
@@ -457,9 +463,11 @@ void shell() {
                 // Close write for the parent since the shell will
                 // never write to the pipe
                 close(fd[1]);
+                prev_fd_to_close = fd[0];
                 wait(&status);
             }
         }
+        close(prev_fd_to_close);
     }
     
     for (int i = 0; i < num_commands; i++) {
