@@ -256,8 +256,14 @@ Commands generate_commands(TokenPair pair) {
 }
 
 int execute_command(Command command) {
-    dup2(command.input, STDIN_FILENO);
-    dup2(command.output, STDOUT_FILENO);
+    if (command.input != STDIN_FILENO) {
+        dup2(command.input, STDIN_FILENO);
+        close(command.input);
+    }
+    if (command.output != STDOUT_FILENO) {
+        dup2(command.output, STDOUT_FILENO);
+        close(command.output);
+    }
     execvp(command.args[0], command.args);
     perror(command.args[0]);
     return 0;
@@ -308,7 +314,13 @@ void shell() {
             // god this below line too so long to come up with - yay pointers!
             memcpy(all_tokens + (total_num_tokens - num_tokens), tokens,
                    num_tokens * sizeof(char *));
+            for (int i = 0; i < total_num_tokens - num_tokens; i++) {
+                free(og_all_tokens[i]);
+            }
             free(og_all_tokens);
+            for (int i = 0; i < num_tokens; i++) {
+                free(tokens[i]);
+            }
             free(tokens);
         }
     }
@@ -342,7 +354,7 @@ void shell() {
         }
         // Check if this is an internal change dir command
         if (strcmp(commands_arr[command_index].args[0], "cd") == 0) {
-            // TODO: Need to handle errors here
+            // Handle errors here
             if (commands_arr[command_index].args[1] == NULL ||
                 strcmp(commands_arr[command_index].args[1], "~") == 0) {
                 chdir(getenv("HOME"));
@@ -363,8 +375,6 @@ void shell() {
         }
         else if (pid == 0) { // Child process
             execute_command(commands_arr[command_index]);
-            //close(commands_arr[command_index].input);
-            //close(commands_arr[command_index].output);
         }
         else { // Parent process
             wait(&status);
@@ -396,23 +406,14 @@ void shell() {
             else if (pid == 0) { // Child process
                 // printf("Executing command.");
                 execute_command(commands_arr[command_index]);
-                // Nothing below this in this "else if" statement runs I think
-                close(fd[1]);
-                close(fd[0]);
-                // TODO: Figure out how to close pipes and input/output
-                // redirects when a command has both
-                //close(commands_arr[command_index].input);
-                //close(commands_arr[command_index].output);
             }
             else { // Parent process
-                // Close read and write for the parent since the shell will
+                // Close write for the parent since the shell will
                 // never write to the pipe
                 close(fd[1]);
                 wait(&status);
             }
         }
-        close(fd[0]);
-        close(fd[1]);
     }
     
     for (int i = 0; i < num_commands; i++) {
