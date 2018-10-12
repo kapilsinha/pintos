@@ -224,13 +224,6 @@ STDOUT_FILENO.
 >> shell in parallel, e.g. designing shared data structures or integration
 >> points up front?  How well did your approach work for your team?  Feel
 >> free to share any positive or negative experiences in this vein.
-We did not do a very good job of communicating the design of the shell in the
-beginning and instead tried to each start working independently. This made it
-difficult to know what other members of the team were working on and also made
-it hard to know how much work was left to be done.
-For our next assignment, we plan on discussing the project together as a team
-and designing a timeline to make sure we all know what needs to be done and by
-when. 
 
 
 
