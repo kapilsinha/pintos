@@ -188,22 +188,43 @@ we move on to the next command in the pipe or if there aren't any return.
 >> "a < inp.txt | b | c > out.txt".
 
 Since each struct in our array of command structs already has its input and
-output set appropriately in the parent process TODO
+output set appropriately in the parent process to the right file descriptors,
+when we fork and create the child, we simply need to set the standard output
+or input of the child to this file descriptor and this is done in the child.
+
+The pipes however, are created by the parent. This is because a parent process
+can only wait for its children to finish executing. Once the pipes are created,
+the input or output field of the command struct is set to the appropriate end
+of the pipe in the parent process. Thus when the child is created and the
+command is executed, we set its standard input and output correctly.
 
 ---- RATIONALE ----
 
 >> A7: Why must the chdir and exit commands be implemented as built-in
 >> functions, rather than external programs?
 These commands must be implement as internal commands because they need to be
-executed by the parent process which is the shell. TODO.
+executed by the parent process which is the shell. This is because we are trying
+to change the directory of the shell itself or exit the shell itself. If we were
+to implement chdir as an external program, it would only change the directory of
+the external program but not the shell itself. Similarly, exit would simply exit
+the child process and not the actual shell.
 
 >> A8: Why did you ultimately choose this design?  In what ways is it
 >> superior to other designs you considered as you developed your solution?
+We chose this design because we tried to follow the recommendations given by the
+assignment which stated that we should first tokenize the command and then put
+it into an array of structs. And we store the input, output, error, number of
+arguments, and arguments for the command in the struct since these are all
+values that are necessary for the execution of the command. We had considered
+storing the filename instead of the file descriptor in the struct but this would
+have made it more difficult to set the default IO values to STDIN_FILENO or
+STDOUT_FILENO.
 
 >> A9: Did you take any steps to facilitate development of the command
 >> shell in parallel, e.g. designing shared data structures or integration
 >> points up front?  How well did your approach work for your team?  Feel
 >> free to share any positive or negative experiences in this vein.
+
 
 
                                 SURVEY QUESTIONS
