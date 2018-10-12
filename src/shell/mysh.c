@@ -427,12 +427,7 @@ void shell() {
     // Need to loop over commands and pipe
     else {
         int fd[2];
-        int prev_fd_to_close = -1;
         for (command_index = 0; command_index < num_commands; command_index++) {
-            if (command_index > 0) {
-                close(prev_fd_to_close);
-            }
-            
             // There was an error opening the pipe
             if (pipe(fd) == -1) {
                 perror("pipe()");
@@ -467,7 +462,6 @@ void shell() {
                 wait(&status);
             }
         }
-        close(prev_fd_to_close);
     }
     
     for (int i = 0; i < num_commands; i++) {
