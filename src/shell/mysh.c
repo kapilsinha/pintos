@@ -39,7 +39,8 @@ TokenPair tokenize(char *command) {
     // Max number of tokens is MAX_COMMAND_LENGTH
     char **tokens = (char **) malloc(MAX_COMMAND_LENGTH * sizeof(char *));
     int num_tokens = 0;
-    for (int i = 0; i < strlen(command); i++) {
+    int i = 0;
+    while (i < strlen(command)) {
         // If character is in quotes, ignore any redirections or pipes
         if (in_quotes && command[i] != '\"') {
             end_index += 1;
@@ -77,10 +78,21 @@ TokenPair tokenize(char *command) {
 
             // Also tokenize the redirects and pipes
             if (command[i] == '>' || command[i] == '<' || command[i] == '|') {
-                tokens[num_tokens] = (char *) malloc (2 * sizeof(char));
-                strncpy(tokens[num_tokens], command + i, 1);
-                // Need to manually null terminate these strings
-                tokens[num_tokens][1] = '\0';
+                // Find instances of >>
+                if (i < strlen(command) - 1 && command[i + 1] == '>') {
+                    tokens[num_tokens] = (char *) malloc (3 * sizeof(char));
+                    strncpy(tokens[num_tokens], command + i, 2);
+                    // Need to manually null terminate these strings
+                    tokens[num_tokens][2] = '\0';
+                    i++;
+                    end_index++;
+                }
+                else {
+                    tokens[num_tokens] = (char *) malloc (2 * sizeof(char));
+                    strncpy(tokens[num_tokens], command + i, 1);
+                    // Need to manually null terminate these strings
+                    tokens[num_tokens][1] = '\0';
+                }
                 num_tokens += 1;
             }
             if (command[i] == '\"') {
@@ -94,6 +106,7 @@ TokenPair tokenize(char *command) {
         else {
             end_index += 1;
         }
+        i++;
     }
     TokenPair pair;
     pair.num_tokens = num_tokens;
@@ -127,7 +140,8 @@ Commands generate_commands(TokenPair pair) {
             io_redirection = 0;
         }
         else if (strcmp(pair.tokens[i], "<") == 0
-                 || strcmp(pair.tokens[i], ">") == 0) {
+                 || strcmp(pair.tokens[i], ">") == 0
+                 || strcmp(pair.tokens[i], ">>") == 0) {
             io_redirection = 1;
         }
         else if (!io_redirection) {
@@ -144,6 +158,7 @@ Commands generate_commands(TokenPair pair) {
     // 1 if immediately after an input redirection symbol, else 0
     int input_redirection = 0;
     // 1 if immediately after an output redirection symbol, else 0
+    // 2 if after >>
     int output_redirection = 0;
     for (int i = 0; i < pair.num_tokens; i++) {
         if (strcmp(pair.tokens[i], "|") == 0) {
@@ -160,6 +175,10 @@ Commands generate_commands(TokenPair pair) {
         else if (strcmp(pair.tokens[i], ">") == 0) {
             input_redirection = 0;
             output_redirection = 1;
+        }
+        else if (strcmp(pair.tokens[i], ">>") == 0) {
+            input_redirection = 0;
+            output_redirection = 2;
         }
         else if (input_redirection || output_redirection) {
             char *filename;
@@ -186,8 +205,12 @@ Commands generate_commands(TokenPair pair) {
                 commands.commands[k].input = in_fd;
             }
 
-            if (output_redirection) {
+            if (output_redirection == 1) {
                 out_fd = open(filename, O_CREAT | O_TRUNC | O_WRONLY, S_IRUSR | S_IWUSR);
+                commands.commands[k].output = out_fd;
+            }
+            else if (output_redirection == 2) {
+                out_fd = open(filename, O_CREAT | O_WRONLY | O_APPEND, S_IRUSR | S_IWUSR);
                 commands.commands[k].output = out_fd;
             }
 
@@ -231,8 +254,58 @@ void shell() {
     getcwd(cwd, sizeof(cwd));
     printf("%s:%s> ", getpwuid(getuid())->pw_name, cwd);
     char command [MAX_COMMAND_LENGTH];
-    fgets(command, MAX_COMMAND_LENGTH, stdin);
-    TokenPair pair = tokenize(command);
+    int num_tokens;
+    char **tokens;
+    int total_num_tokens = 0; // handle several line inputs
+    char **all_tokens;
+    int num_lines = 0;
+    int ends_in_backslash = 2;
+    while (ends_in_backslash) {
+        if (ends_in_backslash == 1) {
+            printf("> ");
+        }
+        fgets(command, MAX_COMMAND_LENGTH, stdin);
+        num_lines += 1;
+        TokenPair temp_pair = tokenize(command);
+        num_tokens = temp_pair.num_tokens;
+        tokens = temp_pair.tokens;
+        if (num_tokens == 0) {
+            break;
+        }
+        if (strcmp(tokens[num_tokens - 1], "\\") == 0) {
+            ends_in_backslash = 1;
+            num_tokens -= 1; // ignore the backslash now
+        }
+        else {
+            ends_in_backslash = 0;
+        }
+        // Sum up total number of tokens
+        total_num_tokens += num_tokens;
+        if (num_lines == 1) {
+            all_tokens = tokens;
+        }
+        else {
+            // Concatenate tokens
+            char **og_all_tokens = all_tokens;
+            all_tokens = (char **) malloc(total_num_tokens * sizeof(char *));
+            memcpy(all_tokens, og_all_tokens, (total_num_tokens - num_tokens)
+                    * sizeof(char *));
+            // god this below line too so long to come up with - yay pointers!
+            memcpy(all_tokens + (total_num_tokens - num_tokens), tokens,
+                   num_tokens * sizeof(char *));
+            free(og_all_tokens);
+            free(tokens);
+        }
+    }
+
+    TokenPair pair;
+    pair.num_tokens = total_num_tokens;
+    pair.tokens = all_tokens;
+    /*
+    for (int i = 0; i < total_num_tokens; i++) {
+        printf("%s, ", all_tokens[i]);
+    }
+    */
     Commands commands = generate_commands(pair);
     int num_commands = commands.num_commands;
     Command *commands_arr = commands.commands;
@@ -291,8 +364,8 @@ void shell() {
         }
         else if (pid == 0) { // Child process
             execute_command(commands_arr[command_index]);
-            close(commands_arr[command_index].input);
-            close(commands_arr[command_index].output);
+            //close(commands_arr[command_index].input);
+            //close(commands_arr[command_index].output);
         }
         else { // Parent process
             wait(&status);
