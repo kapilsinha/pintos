@@ -3,7 +3,7 @@
                              | PROJECT 1: SHELL |
                              |  DESIGN DOCUMENT |
                              +------------------+
-                   
+
 ---- GROUP ----
 
 >> Fill in the names and email addresses of your group members.
@@ -12,7 +12,7 @@ Kapil Sinha <ksinha@caltech.edu>
 Karthik Nair <knair@caltech.edu>
 Joseph Tilahun <jtilahun@caltech.edu>
 
->> Specify how many late tokens you are using on this assignment:  
+>> Specify how many late tokens you are using on this assignment:
 0
 
 >> What is the Git repository URL and commit hash for your submission?
@@ -41,12 +41,22 @@ assignments, as well as keeping track of which team members worked on
 which parts.
 
 >> L1: How many hours did each team member spend on this assignment?
-Joseph: x h
-Kapil: y h
-Karthik: z h
+Joseph: 15 h
+Kapil: 20 h
+Karthik: 15 h
 
 >> L2: What did each team member focus on for this assignment?  Keep
    descriptions to 25-30 words or less.
+
+Kapil focused on parsing the command and tokenizing it into an array. Kapil also
+wrote the code to execute a command using execvp() after appropriately setting
+its input and output.
+Joseph focused on putting the tokenized commands into an array of structs and
+also did some of the error handling.
+Karthik focused on the IO redirection, implementing pipes, and the main loop
+although Joseph and Kapil later helped with debugging the issues with the pipes.
+General debugging like fixing memory likes and open file descriptors was done by
+all members of the team.
 
 ---- DATA STRUCTURES ----
 
@@ -54,20 +64,63 @@ Karthik: z h
 >> commands that contain arguments and pipes, using the example
 >> command "a arg1 arg2 | b arg1 | c arg1 arg2 arg3".  How does your
 >> shell internally represent such a command?
+The command is first tokenized into an array which is split up by spaces or tabs
+and "|", "<", ">", or ">>" symbols. Following the example given, the tokenized
+array would be:
+
+[a, arg1, arg2, |, b, arg1, |, c, arg1, arg2, arg3]
+
+This tokenized array is then put into an array of structs where the struct is
+defined as follows:
+
+typedef struct command {
+    int input;
+    int output;
+    int error;
+    int num_args;
+    char **args;
+} Command;
+
+Following the example given, we would create the following three structs (one
+for each command since we separate commands by pipes):
+
+c1 : {STDIN_FILENO, STDOUT_FILENO, STDERR_FILENO, 2, [a, arg1, arg2]}
+c2 : {STDIN_FILENO, STDOUT_FILENO, STDERR_FILENO, 1, [b, arg1]}
+c3 : {STDIN_FILENO, STDOUT_FILENO, STDERR_FILENO, 3, [c, arg1, arg2, arg3]}
+
+These three structs are then put into an array which is [c1, c2, c3].
+Since the length of this array is greater than 1, we know that there are
+multiple commands and we need to be using pipes. We can then loop over the
+commands array from left to array while creating pipes as needed. We then
+fork() to avoid interfering with the IO for the shell itself which acts as the
+parent. In the child process, we use dup2() to duplicate the file descriptor of
+the pipe and then execute using execvp().
 
 >> A2: Now, given the command:
 >> "a arg1 arg2 < inp.txt | b arg1 | c arg1 arg2 arg3 > out.txt"
 >> Briefly explain specifically how the redirections are parsed and
 >> represented, and by what processes.
-(TODO: clean this up and fix what is said - this is some initial explanation)
-We initially treat each part of the command that is split by the pipes (|) as
-distinct parts. Within each part, we treat each word (split by an arbitrary
-amount of whitespace or within quotes) as arguments until we see either the
-input (<) or output (>) redirections. Given either the input or output
-redirection, we spawn a child process such that the standard out/in file
-descriptors are replaced with that of the appropriate file. Now, we factor in
-the pipes such that the standard output of one part replaces the standard input
-of the following part.
+
+We split up the commands by pipes which is the "|" symbol. We then treat each
+command separately and assume any input after a command is an argument unless we
+see a "<", ">", or ">>" symbol. We assume the first word/argument is the command
+to be executed until we see a pipe in which case we set the word/argument right
+after the pipe to be the current command. If we see any of the symbols
+specified, we update the command struct accordingly to set the input or output.
+If we do not see any of these symbols, then we just set input and output to the
+default values which are STDIN_FILENO, STDOUT_FILENO, and STDERR_FILENO.
+We set the fields of the command struct to the file descriptor returned after
+opening the file. All of this is done in the parent which is the shell itself.
+
+When we begin looping over the array of command structs, we fork() before
+executing the command. This creates a child which uses dup2() to set the
+standard input or standard output of the process to the desired file. It then
+executes the process. We fork before setting the standard input and standard
+output to prevent interfering with the IO of the shell.
+While looping over the array of command structs, if the length of the array is
+greater than 1, this implies that we need pipes. We open the pipes in the parent
+since we need two separate children to be able to access the same pipe and a
+parent can only wait for its children to terminate and not its grandchildren.
 
 
 ---- ALGORITHMS ----
@@ -75,6 +128,7 @@ of the following part.
 >> A3: Illustrate how you solved the problem of setting up
 >> redirection in a simple command like "a < inp.txt > out.txt", by
 >> describing what process takes care of the redirection and when.
+We parse the command as explained above where we assume any values
 
 >> A4: Illustrate how you solved the problem of setting up the pipes
 >> between multiple operations in a single command, by describing
@@ -133,5 +187,3 @@ penalized.  We can't fix things until we know about them.  :-)
 >> projects?
 
 >> Any other comments?
-
-
