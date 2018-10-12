@@ -26,10 +26,13 @@ Joseph Tilahun <jtilahun@caltech.edu>
 
 >> If you have any preliminary comments on your submission, notes for the
 >> TAs, or extra credit, please include them here.
+We did the first two extra credit parts (continuing commands after a backslash
+and appending (instead of overwriting) a file via >>).
 
 >> Please cite any offline or online sources you consulted while
 >> preparing your submission, other than the Pintos documentation, course
 >> text, lecture notes, and course instructors.
+We consulted Prof. Pinkston's slides and the book section on pipes he attached.
 
                                 COMMAND SHELL
                                 =============
@@ -42,7 +45,7 @@ which parts.
 
 >> L1: How many hours did each team member spend on this assignment?
 Joseph: 15 h
-Kapil: 20 h
+Kapil: 25 h
 Karthik: 15 h
 
 >> L2: What did each team member focus on for this assignment?  Keep
@@ -50,12 +53,12 @@ Karthik: 15 h
 
 Kapil focused on parsing the command and tokenizing it into an array. Kapil also
 wrote the code to execute a command using execvp() after appropriately setting
-its input and output.
+its input and output. He also debugged several of the issues with pipes.
 Joseph focused on putting the tokenized commands into an array of structs and
-also did some of the error handling.
+also did some of the error handling and file closing.
 Karthik focused on the IO redirection, implementing pipes, and the main loop
 although Joseph and Kapil later helped with debugging the issues with the pipes.
-General debugging like fixing memory likes and open file descriptors was done by
+General debugging like fixing memory leaks and open file descriptors was done by
 all members of the team.
 
 ---- DATA STRUCTURES ----
@@ -202,7 +205,7 @@ command is executed, we set its standard input and output correctly.
 
 >> A7: Why must the chdir and exit commands be implemented as built-in
 >> functions, rather than external programs?
-These commands must be implement as internal commands because they need to be
+These commands must be implemented as internal commands because they need to be
 executed by the parent process which is the shell. This is because we are trying
 to change the directory of the shell itself or exit the shell itself. If we were
 to implement chdir as an external program, it would only change the directory of
