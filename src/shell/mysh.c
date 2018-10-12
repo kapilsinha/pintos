@@ -186,7 +186,6 @@ Commands generate_commands(TokenPair pair) {
             output_redirection = 2;
         }
         else if (input_redirection || output_redirection) {
-            char *filename;
             char *src;
             size_t len;
             if (strlen(pair.tokens[i]) >= 2 && pair.tokens[i][0] == '\"'
@@ -198,7 +197,7 @@ Commands generate_commands(TokenPair pair) {
                 src = pair.tokens[i];
                 len = strlen(pair.tokens[i]);
             }
-            filename = (char *) malloc((len + 1) * sizeof(char));
+            char filename[len + 1];
             strncpy(filename, src, len);
             filename[len] = '\0';
 
@@ -319,6 +318,11 @@ void shell() {
     pair.tokens = all_tokens;
 
     Commands commands = generate_commands(pair);
+    for (int i = 0; i < total_num_tokens; i++) {
+        free(all_tokens[i]);
+    }
+    free(all_tokens);
+
     // Check if there were any errors when creating the structs
     if (commands.commands == NULL || commands.num_commands == 0) {
         return;
@@ -393,16 +397,12 @@ void shell() {
                 // printf("Executing command.");
                 execute_command(commands_arr[command_index]);
                 // Nothing below this in this "else if" statement runs I think
-                printf("Executed command. This never gets printed...");
                 close(fd[1]);
                 close(fd[0]);
                 // TODO: Figure out how to close pipes and input/output
                 // redirects when a command has both
                 //close(commands_arr[command_index].input);
                 //close(commands_arr[command_index].output);
-                if (command_index == num_commands - 1) {
-                    printf("Last command\n");
-                }
             }
             else { // Parent process
                 // Close read and write for the parent since the shell will
@@ -411,11 +411,17 @@ void shell() {
                 wait(&status);
             }
         }
-        // printf("Done with for loop\n");
         close(fd[0]);
         close(fd[1]);
-        return;
     }
+    
+    for (int i = 0; i < num_commands; i++) {
+        for (int j = 0; j < commands_arr[i].num_args + 1; j++) {
+            free(commands_arr[i].args[j]);
+        }
+        free(commands_arr[i].args);
+    }
+    free(commands_arr);
 }
 
 int main() {
