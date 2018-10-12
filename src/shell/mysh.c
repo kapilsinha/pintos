@@ -410,7 +410,7 @@ void shell() {
         }
         // If not an internal command, fork
         if ((pid = fork()) < 0) {
-            printf("Failed to fork process");
+            fprintf(stderr, "Failed to fork process.  Exiting.\n");
             exit(1);
         }
         else if (pid == 0) { // Child process
@@ -440,7 +440,7 @@ void shell() {
             
             // Fork and execute the command
             if ((pid = fork()) < 0) {
-                printf("Failed to fork process");
+                fprintf(stderr, "Failed to fork process.  Exiting.\n");
                 exit(1);
             }
             else if (pid == 0) { // Child process
@@ -450,7 +450,7 @@ void shell() {
             else { // Parent process
                 // Close write for the parent since the shell will
                 // never write to the pipe
-                close(fd[1]);
+                // close(fd[1]);
                 wait(&status);
             }
         }
