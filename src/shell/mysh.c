@@ -116,6 +116,10 @@ TokenPair tokenize(char *command) {
 
 Commands generate_commands(TokenPair pair) {
     Commands commands;
+    // Something to return if the files don't exist or something else fails
+    Commands null;
+    null.commands = (Command *) NULL;
+    null.num_commands = 0;
     commands.num_commands = 1;
     for (int i = 0; i < pair.num_tokens; i++) {
         if (strcmp(pair.tokens[i], "|") == 0) {
@@ -202,18 +206,30 @@ Commands generate_commands(TokenPair pair) {
             int in_fd, out_fd;
             if (input_redirection) {
                 in_fd = open(filename, O_RDONLY, S_IRUSR | S_IWUSR);
+                if (in_fd < 0) {// An error occured
+                    perror(filename);
+                    return null;
+                }
                 commands.commands[k].input = in_fd;
             }
-
             if (output_redirection == 1) {
-                out_fd = open(filename, O_CREAT | O_TRUNC | O_WRONLY, S_IRUSR | S_IWUSR);
+                out_fd = open(filename, O_CREAT | O_TRUNC | O_WRONLY,
+                    S_IRUSR | S_IWUSR);
+                if (out_fd < 0) {// An error occured
+                    perror(filename);
+                    return null;
+                }
                 commands.commands[k].output = out_fd;
             }
             else if (output_redirection == 2) {
-                out_fd = open(filename, O_CREAT | O_WRONLY | O_APPEND, S_IRUSR | S_IWUSR);
+                out_fd = open(filename, O_CREAT | O_APPEND | O_WRONLY,
+                    S_IRUSR | S_IWUSR);
+                if (out_fd < 0) {// An error occured
+                    perror(filename);
+                    return null;
+                }
                 commands.commands[k].output = out_fd;
             }
-
         }
         else {
             char *src;
@@ -243,8 +259,7 @@ int execute_command(Command command) {
     dup2(command.input, STDIN_FILENO);
     dup2(command.output, STDOUT_FILENO);
     execvp(command.args[0], command.args);
-    // int err = errno;
-    perror("Error in executing command");
+    perror(command.args[0]);
     return 0;
 }
 
@@ -301,35 +316,14 @@ void shell() {
     TokenPair pair;
     pair.num_tokens = total_num_tokens;
     pair.tokens = all_tokens;
-    /*
-    for (int i = 0; i < total_num_tokens; i++) {
-        printf("%s, ", all_tokens[i]);
-    }
-    */
+
     Commands commands = generate_commands(pair);
+    // Check if there were any errors when creating the structs
+    if (commands.commands == NULL || commands.num_commands == 0) {
+        return;
+    }
     int num_commands = commands.num_commands;
     Command *commands_arr = commands.commands;
-
-    /*
-    printf("Number of commands: %d\n", num_commands);
-    printf("========================================"
-           "========================================\n");
-    for (int i = 0; i < num_commands; i++) {
-        printf("Input: %d\n\n", commands_arr[i].input);
-        printf("Output: %d\n\n", commands_arr[i].output);
-        printf("Error: %d\n\n", commands_arr[i].error);
-        printf("Number of arguments: %d\n\n", commands_arr[i].num_args);
-        printf("Arguments:\n");
-        for (int j = 0; j < commands_arr[i].num_args; j++) {
-            printf("%s\n", commands_arr[i].args[j]);
-        }
-        printf("\n");
-        if (i < num_commands - 1) {
-            printf("----------------------------------------"
-                   "----------------------------------------\n");
-        }
-    }
-    */
 
     pid_t pid;
     int status;
@@ -423,11 +417,8 @@ void shell() {
             else { // Parent process
                 // Close read and write for the parent since the shell will
                 // never write to the pipe
-                close(fd[1]); // LOL THIS FIXES PROBLEMS. WHY NOT CLOSE BOTH ENDS OR CLOSE NOTHING?????
-                // printf("%s\n", "parent waiting");
+                close(fd[1]);
                 wait(&status);
-                // printf("%s\n", "parent done waiting");
-                // printf("Command index %d\n", command_index);
             }
         }
         // printf("Done with for loop\n");
