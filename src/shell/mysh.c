@@ -370,31 +370,20 @@ void shell() {
     // Need to loop over commands and pipe
     else {
         int fd[2];
-        // There was an error opening the pipe
-        if (pipe(fd) == -1) {
-            perror("Failed to open pipe");
-        }
         for (command_index = 0; command_index < num_commands; command_index++) {
-            // This is the first command
-            if (command_index == 0) {
-                // Set command to write to write end of the pipe
-                commands_arr[command_index].output = fd[1];
+            // There was an error opening the pipe
+            if (pipe(fd) == -1) {
+                perror("Failed to open pipe");
             }
-
-            // This if the last command
-            else if (command_index == num_commands - 1) {
-                // Set command to only read from read end of the pipe
-                commands_arr[command_index].input = fd[0];
-            }
-
+            
             /* This command is in the middle so reads from old pipe and
                writes to a different new pipe. */
-            // TODO: Handle several pipes (not just two)
-            else {
-                commands_arr[command_index].input = fd[0];
+            // This is not the last command
+            if (command_index < num_commands - 1) {
                 commands_arr[command_index].output = fd[1];
+                commands_arr[command_index + 1].input = fd[0];
             }
-
+            
             // Fork and execute the command
             if ((pid = fork()) < 0) {
                 printf("Failed to fork process");
