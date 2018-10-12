@@ -20,7 +20,7 @@ Joseph Tilahun <jtilahun@caltech.edu>
    on Moodle.)
 
    Repository URL: https://github.com/kapilsinha/pintos
-   commit [TODO: add later]
+   commit: b7e6d8d4a195e1cd4af57e3eaf39b649cb9fcae6
 
 ---- PRELIMINARIES ----
 
@@ -32,7 +32,7 @@ and appending (instead of overwriting) a file via >>).
 >> Please cite any offline or online sources you consulted while
 >> preparing your submission, other than the Pintos documentation, course
 >> text, lecture notes, and course instructors.
-We consulted Prof. Pinkston's slides and the book section on pipes he attached.
+We consulted Donnie Pinkston's slides and the book section on pipes he attached.
 
                                 COMMAND SHELL
                                 =============
@@ -227,6 +227,8 @@ STDOUT_FILENO.
 >> shell in parallel, e.g. designing shared data structures or integration
 >> points up front?  How well did your approach work for your team?  Feel
 >> free to share any positive or negative experiences in this vein.
+No, we did not take any steps to facilitate development of the command shell in
+parallel. Overall, our approached worked well.
 
 
 
