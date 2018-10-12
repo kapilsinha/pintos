@@ -191,10 +191,9 @@ Commands generate_commands(TokenPair pair) {
     }
     int k = 0;
     int l = 0;
-    // 1 if immediately after an input redirection symbol, else 0
+    // 1 if after < else 0
     int input_redirection = 0;
-    // 1 if immediately after an output redirection symbol, else 0
-    // 2 if after >>
+    // 1 if after >, 2 if after >>, else 0
     int output_redirection = 0;
     for (int i = 0; i < pair.num_tokens; i++) {
         if (strcmp(pair.tokens[i], "|") == 0) {
@@ -356,7 +355,6 @@ void shell() {
             all_tokens = (char **) malloc(total_num_tokens * sizeof(char *));
             memcpy(all_tokens, og_all_tokens, (total_num_tokens - num_tokens)
                     * sizeof(char *));
-            // god this below line too so long to come up with - yay pointers!
             memcpy(all_tokens + (total_num_tokens - num_tokens), tokens,
                    num_tokens * sizeof(char *));
             for (int i = 0; i < total_num_tokens - num_tokens; i++) {
@@ -450,13 +448,15 @@ void shell() {
                 exit(1);
             }
             else if (pid == 0) { // Child process
-                // printf("Executing command.");
                 execute_command(commands_arr[command_index]);
+                // Only if execute_command failed (already printed error
+                // message) - exit out of the child process
+                exit(1);
             }
             else { // Parent process
                 // Close write for the parent since the shell will
                 // never write to the pipe
-                // close(fd[1]);
+                close(fd[1]);
                 wait(&status);
             }
         }
