@@ -456,7 +456,7 @@ void shell() {
             else { // Parent process
                 // Close write for the parent since the shell will
                 // never write to the pipe
-                // close(fd[1]);
+                close(fd[1]);
                 wait(&status);
             }
         }
