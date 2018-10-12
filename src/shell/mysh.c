@@ -44,7 +44,7 @@ TokenPair tokenize(char *command) {
     // Max number of tokens is MAX_COMMAND_LENGTH
     char **tokens = (char **) malloc(MAX_COMMAND_LENGTH * sizeof(char *));
     if (tokens == NULL) {
-        malloc_error("tokens");
+        malloc_error();
     }
     int num_tokens = 0;
     int i = 0;
@@ -313,7 +313,12 @@ void shell() {
     // Print prompt
     char cwd[MAX_PATH_SIZE];
     getcwd(cwd, sizeof(cwd));
-    printf("%s:%s> ", getpwuid(getuid())->pw_name, cwd);
+    struct passwd *pwuid = getpwuid(getuid());
+    if (pwuid == NULL) {
+        perror("getpwuid()");
+        exit(1);
+    }
+    printf("%s:%s> ", pwuid->pw_name, cwd);
     char command [MAX_COMMAND_LENGTH];
     int num_tokens;
     char **tokens;
@@ -410,7 +415,7 @@ void shell() {
         }
         // If not an internal command, fork
         if ((pid = fork()) < 0) {
-            fprintf(stderr, "Failed to fork process.  Exiting.\n");
+            perror("fork()");
             exit(1);
         }
         else if (pid == 0) { // Child process
@@ -427,7 +432,8 @@ void shell() {
         for (command_index = 0; command_index < num_commands; command_index++) {
             // There was an error opening the pipe
             if (pipe(fd) == -1) {
-                perror("Failed to open pipe");
+                perror("pipe()");
+                exit(1);
             }
             
             /* This command is in the middle so reads from old pipe and
@@ -440,7 +446,7 @@ void shell() {
             
             // Fork and execute the command
             if ((pid = fork()) < 0) {
-                fprintf(stderr, "Failed to fork process.  Exiting.\n");
+                perror("fork()");
                 exit(1);
             }
             else if (pid == 0) { // Child process
