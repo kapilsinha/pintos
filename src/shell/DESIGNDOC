@@ -84,9 +84,9 @@ typedef struct command {
 Following the example given, we would create the following three structs (one
 for each command since we separate commands by pipes):
 
-c1 : {STDIN_FILENO, STDOUT_FILENO, STDERR_FILENO, 2, [a, arg1, arg2]}
-c2 : {STDIN_FILENO, STDOUT_FILENO, STDERR_FILENO, 1, [b, arg1]}
-c3 : {STDIN_FILENO, STDOUT_FILENO, STDERR_FILENO, 3, [c, arg1, arg2, arg3]}
+c1 = {STDIN_FILENO, STDOUT_FILENO, STDERR_FILENO, 2, [a, arg1, arg2]}
+c2 = {STDIN_FILENO, STDOUT_FILENO, STDERR_FILENO, 1, [b, arg1]}
+c3 = {STDIN_FILENO, STDOUT_FILENO, STDERR_FILENO, 3, [c, arg1, arg2, arg3]}
 
 These three structs are then put into an array which is [c1, c2, c3].
 Since the length of this array is greater than 1, we know that there are
@@ -128,7 +128,22 @@ parent can only wait for its children to terminate and not its grandchildren.
 >> A3: Illustrate how you solved the problem of setting up
 >> redirection in a simple command like "a < inp.txt > out.txt", by
 >> describing what process takes care of the redirection and when.
-We parse the command as explained above where we assume any values
+
+We parse the command as explained above where we assume any values after the
+command are arguments unless we come across a "<", ">", or ">>" symbol. All of
+the parsing is done in the parent. After the command is parsed, it is put into
+a struct which stores the desired input and output of the command. The parent
+opens the files and sets the input and output fields of the struct
+to the file descriptor returned after opening the file.
+
+Following the example, we would have created an array of length 1 where the
+struct would look like the following:
+
+c1 = {open(inp.txt), open(out.txt), STDERR_FILENO, 1, [a]}
+
+When we begin executing the command, we fork to create a child and the child
+sets its standard input or output to the fields in the struct using dup2()
+before executing the command.
 
 >> A4: Illustrate how you solved the problem of setting up the pipes
 >> between multiple operations in a single command, by describing
@@ -139,17 +154,48 @@ We parse the command as explained above where we assume any values
 >> Keep your description of each process' responsibilities limited to
 >> ~25 words or less.
 
+We begin with the parent which first tokenizes the command and then puts the
+commands into structs which are then stored in an array.
+
+If the length of this array is 1, we know that there are no pipes and continue
+with executing the command after doing the IO redirection as described above.
+
+If the length of the array is greater than 1, it is implied that the command
+contains pipes because of the way we parsed the command. Since we loop over the
+commands in the shell which is the parent process, as we loop over the commands,
+we create pipes as needed. Since the example has three commands, our commands
+array would have 3 elements. We loop over this array from left to right until
+the second to last command. At each iteration of the loop, we set the standard
+output field of the current command to the write end of the pipe and we set the
+standard input field of the next command to the read end of the pipe. This is
+done in the parent since setting the IO of the command struct is done by simply
+setting the field to the appropriate file descriptor.
+
+Before we execute the command, we fork to create a child process and then do the
+actual IO redirection since we use dup2() to replace the standard input or
+output of the process with the appropriate file descriptor.
+
 >> A5: Similarly, describe the details of how terminated processes are
 >> reaped in the example command "a | b | c".
+
+We use wait() in the parent to block the parent process until the child has
+terminated. This allows the child to continue executing and blocks the execution
+of the parent until the child is done. Once the child has finished executing,
+we move on to the next command in the pipe or if there aren't any return.
 
 >> A6: Similarly, describe which processes are responsible for setting
 >> up the redirections in the example command
 >> "a < inp.txt | b | c > out.txt".
 
+Since each struct in our array of command structs already has its input and
+output set appropriately in the parent process TODO
+
 ---- RATIONALE ----
 
 >> A7: Why must the chdir and exit commands be implemented as built-in
 >> functions, rather than external programs?
+These commands must be implement as internal commands because they need to be
+executed by the parent process which is the shell. TODO.
 
 >> A8: Why did you ultimately choose this design?  In what ways is it
 >> superior to other designs you considered as you developed your solution?
@@ -171,19 +217,41 @@ penalized.  We can't fix things until we know about them.  :-)
 
 >> In your opinion, was this assignment, or any of the parts of it, too
 >> easy or too hard?  Did it take too long or too little time?
+The assignment did not seem particularly difficult and we were able to get the
+general functionality working fairly quickly but some of the smaller and more
+subtle bugs were quite difficult to figure out and took a while.
 
 >> Did you find that working on a particular part of the assignment gave
 >> you greater insight into some aspect of OS design?
+I think that working on the assignment in general and making all the system
+calls helped me understand more about the internal workings of the shell
+especially the pipes which helped me understand how output from one process
+is piped to another.
 
 >> Were there any parts of the assignment that you felt were unnecessarily
 >> tedious or pointless?
+I think the tokenization of the command was fairly tedious since it was
+essentially a lot of if statements and edge cases but I don't really think
+it was pointless because it would have been harder if we had to use someone
+else's implementation.
 
 >> Is there some particular fact or hint we should give students in
 >> future quarters to help them solve the problems?  Conversely, did you
 >> find any of our guidance to be misleading?
+I think some more explanation on the system calls, especially pipes and when
+and where to close them would have been very helpful. We struggled a lot with
+trying to figure out where we should be closing our pipes and also we couldn't
+understand why our shell behaved the way that it did when we closed the wrong
+end of the pipe.
 
 >> Do you have any suggestions for the instructor and/or TAs to more
 >> effectively assist students, either for future quarters or the remaining
 >> projects?
+I think holding office hours closer to the due date would be beneficial since
+most of our subtle bugs only started popping up later once we had the basic
+functionality down.
 
 >> Any other comments?
+I would like for there to be some optional extra credit or some instructions
+on how to add color to our shell. I am not sure of exactly how this works and
+would like to know more and perhaps even implement it.
