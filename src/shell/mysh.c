@@ -44,6 +44,7 @@ TokenPair tokenize(char *command) {
         // If character is in quotes, ignore any redirections or pipes
         if (in_quotes && command[i] != '\"') {
             end_index += 1;
+            i++;
             continue;
         }
         // If start_index corresponds to whitespace, increment start_index
