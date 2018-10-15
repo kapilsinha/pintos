@@ -458,7 +458,6 @@ void shell() {
                 // Close write for the parent since the shell will
                 // never write to the pipe
                 close(fd[1]);
-                prev_fd_to_close = fd[0];
                 wait(&status);
             }
         }
