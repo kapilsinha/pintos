@@ -35,7 +35,7 @@ boot_start:
 	mov	%ax, %ss
 	mov	$0xf000, %esp	# Use %esp since we'll be in 32-bit mode later
 
-	# Hide the cursor, just to be "prettier."  This will carry over into
+	# Hde the cursor, just to be "prettier."  This will carry over into
 	# protected mode execution too.
 	mov	$1, %ah
 	mov	$0x2607, %cx	# Set cursor end-row to come before start-row
@@ -44,6 +44,34 @@ boot_start:
 	mov	$STR_LOADING, %si
 	call	print_str
 
+        #----STARTED MY CODE HERE (KAPIL)
+        # Use Extended Read Sectors to read data from disk
+        movb    $0x42, %ah
+        # Set drive index to point to first hard drive (at 0x80)
+        movb    $0x80, %dl
+        # Push DAP to the stack (in reverse order)
+        pushl   $0              # high nibble of start index of read sectors (LBA)
+        pushl   $0              # low nibble of start index of read sectors (LBA)
+        pushl   BOOT_BASE_ADDR  # segment:offset of buffer to receive data
+        pushw   $1              # number of 512-byte sectors to read
+        pushb   $0              # unused, set to 0
+        pushb   $0x10           # size of DAP (16 bytes)
+        # Copy lower 16 bits of stack pointer to %si
+        movw    %sp, %si        # segment:offset pointer to DAP
+        # Copy upper 16 bits of stack pointer to %ds
+        movl    %esp, %eax
+        sarl    %eax, $16       # segment:offset pointer to DAP
+        movw    %ax, %ds        # segment:offset pointer to DAP
+
+        int     $0x13           # Execute read data (sets carry flag if error)
+        # Try popa or maybe just moving the stack pointer esp
+        popb    %cl
+        popb    %cl
+        popw    %cx
+        popl    %ecx
+        popl    %ecx
+        popl    %ecx
+        jc      boot_fail       # If error (carry flag), jump to boot_fail
 	#---------------------------------------------------------------------
 	# TODO:  Load the remainder of the program into memory using int 10h
 	#        "Extended Read Operation."  If it fails, jump to boot_fail.
@@ -71,6 +99,13 @@ boot_start:
 	# switch over to protected mode.
 
 start_protected:
+
+        #----STARTED MY CODE HERE (KAPIL)
+        cli # disable interrupts
+        data32 addr32 lgdt gdtdesc # load GDTR with base address of GDT
+        movl    %cr0, %eax # read in cr0 control register
+        orl     CRO_PE, %eax # set bits to turn on protection mode        
+        movl    %eax, %cr0 # enable protected mode
 
 	#---------------------------------------------------------------------
 	# TODO:  Switch from real mode into protected mode.  The process is
@@ -139,7 +174,14 @@ start_protected:
 call_c_entry:
 
 	cld			# C code expects this...
-	movl $0, %ebp		# Null-terminate the program's backtrace
+	movl        $0, %ebp    # Null-terminate the program's backtrace
+        #----STARTED MY CODE HERE (KAPIL)
+        # No idea how to use the e_entry field
+        movl        PROGRAM_BASE_ADDR, %eax # start of file (main program) data
+        addl        $0x18, %eax # e_entry is at a fixed 0x18 offset from start
+                                # and contains memory address of C entry point
+        call        *%eax
+        # Is this using cdecl?
 
 	#---------------------------------------------------------------------
 	# TODO:  Call the entry-point of the C program!  The program is
