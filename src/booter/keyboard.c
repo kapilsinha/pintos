@@ -57,7 +57,7 @@ int is_m_pressed(void) {
  *        so that nothing gets mangled...
  */
 
-void keyboard_interrupt(void) {
+void keyboard_handler(void) {
     /* Since we haven't acknowledged this interrupt yet, don't have to worry
         about other interrupts. */
     unsigned char scan_code = inb(KEYBOARD_PORT);
@@ -77,13 +77,14 @@ void keyboard_interrupt(void) {
     }
 }
 
-
 void init_keyboard(void) {
     /* TODO:  Initialize any state required by the keyboard handler. */
 
     /* TODO:  You might want to install your keyboard interrupt handler
      *        here as well.
      */
-     install_interrupt_handler(1, irq1_handler);
+     // Set to 0x21 because we remapped the interrupts to 0x20
+     install_interrupt_handler(KEYBOARD_INTERRUPT, irq1_handler);
+     install_interrupt_handler(TIMER_INTERRUPT, irq1_handler);
 
 }

@@ -1,3 +1,5 @@
+#include "interrupts.h"
+#include "handlers.h"
 #include "timer.h"
 #include "ports.h"
 
@@ -46,6 +48,10 @@
  *        compiler knows they can be changed by exceptional control flow.
  */
 
+void timer_handler(void) {
+    return;
+}
+
 
 void init_timer(void) {
 
@@ -66,4 +72,5 @@ void init_timer(void) {
     /* TODO:  You might want to install your timer interrupt handler
      *        here as well.
      */
+     //install_interrupt_handler(TIMER_INTERRUPT, irq0_handler);
 }
