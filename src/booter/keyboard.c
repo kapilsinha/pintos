@@ -1,4 +1,7 @@
 #include "ports.h"
+#include "keyboard.h"
+#include "interrupts.h"
+#include "handlers.h"
 
 /* This is the IO port of the PS/2 controller, where the keyboard's scan
  * codes are made available.  Scan codes can be read as follows:
@@ -23,21 +26,21 @@
  */
 
 // TODO: Could probably put all this into one function but nah
-bool static volatile a_pressed = 0;
-bool static volatile z_pressed = 0;
-bool static volatile k_pressed = 0;
-bool static volatile m_pressed = 0;
+int static volatile a_pressed = 0;
+int static volatile z_pressed = 0;
+int static volatile k_pressed = 0;
+int static volatile m_pressed = 0;
 
-bool is_a_pressed(void) {
+int is_a_pressed(void) {
     return a_pressed;
 };
-bool is_z_pressed(void) {
+int is_z_pressed(void) {
     return z_pressed;
 };
-bool is_k_pressed(void) {
+int is_k_pressed(void) {
     return k_pressed;
 };
-bool is_m_pressed(void) {
+int is_m_pressed(void) {
     return m_pressed;
 };
 
@@ -81,6 +84,6 @@ void init_keyboard(void) {
     /* TODO:  You might want to install your keyboard interrupt handler
      *        here as well.
      */
-     install_interrupt_handler(1, irq1_handler)
+     install_interrupt_handler(1, irq1_handler);
 
 }
