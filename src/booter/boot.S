@@ -44,52 +44,49 @@ boot_start:
 	mov	$STR_LOADING, %si
 	call	print_str
 
-        #----STARTED MY CODE HERE (KAPIL)
+	#---------------------------------------------------------------------
+	# Load the remainder of the program into memory using int 13h
+	# "Extended Read Operation."  If it fails, jump to boot_fail.
+        
         # Use Extended Read Sectors to read data from disk
         movb    $0x42, %ah
         # Set drive index to point to first hard drive (at 0x80)
         movb    $0x80, %dl
+        
         # Push DAP to the stack (in reverse order)
-        pushl   $0              # high nibble of start index of read sectors (LBA)
-        pushl   $1              # low nibble of start index of read sectors (LBA)
+        # xxd floppy.img -> shows ELF starts at 0x200
+        # (which is 512 in decimal, corresponding to index 1)
+        pushl   $0              # high nibble of start index of read sectors
+                                # in logical block addressing (LBA)
+        pushl   $1              # low nibble of start index of read sectors
+        # Buffer address (absolute memory location) is 0x00020000 (see boot.h)
+        # Absolute memory location = 16 * segment + offset, so
+        # segment = 0x2000 and offset = 0x0000 (concatenate them below)
         pushl   $0x20000000     # segment:offset of buffer to receive data
+        # Number of sectors is number of sectors that are needed to contain
+        # program.bin - e.g. if program.bin is 4.6KB, we need ~10 sectors
         pushw   $10             # number of 512-byte sectors to read
-	pushw	$0x10
-        #pushb   $0             # unused, set to 0
-        #pushb   $0x10          # size of DAP (16 bytes)
+        # pushb   $0            # unused, set to 0
+        # pushb   $0x10         # size of DAP (16 bytes)
+	pushw	$0x10           # concatenation of above two bytes (commented)
         # Copy lower 16 bits of stack pointer to %si
         movw    %sp, %si        # segment:offset pointer to DAP
+        # This is 16 bit and we set %ss = %ds = 0, so we can ignore it now
 
+# nm boot.o reveals virtual addresses of these section headers (like read_data)
+# and adding 0x7c00 to it allows you to break by address (e.g. break *0x7cbf)
 read_data:
         int     $0x13           # Execute read data (sets carry flag if error)
-        # Try popa or maybe just moving the stack pointer esp
+        # Alternatively can simply move %esp but this is more readable
         popw	%cx
-        #popb    %cl
-        #popb    %cl
 	popw    %cx
         popl    %ecx
         popl    %ecx
         popl    %ecx
         jc      boot_fail       # If error (carry flag), jump to boot_fail
-	#---------------------------------------------------------------------
-	# TODO:  Load the remainder of the program into memory using int 10h
-	#        "Extended Read Operation."  If it fails, jump to boot_fail.
-	#
-	#        REMOVE THIS COMMENT BLOCK WHEN YOU WRITE THIS CODE.
-	#---------------------------------------------------------------------
 
 	mov	$STR_LOADED, %si
 	call	print_str
-
-	#---------------------------------------------------------------------
-	# TODO:  If you want to do anything else with the computer hardware
-	#        using the BIOS, here is the place to do it.  After this we
-	#        will transition into 32-bit protected mode, and the BIOS will
-	#        no longer be available to use.
-	#
-	#        REMOVE THIS COMMENT BLOCK WHEN YOU WRITE THIS CODE.
-	#        (OR IF YOU DECIDE YOU DON'T WANT TO PUT ANYTHING HERE.)
-	#---------------------------------------------------------------------
 
 	#=====================================================================
 	# Next, set up for transition from 16-bit real mode to 32-bit
@@ -99,51 +96,29 @@ read_data:
 
 start_protected:
 
-        #----STARTED MY CODE HERE (KAPIL)
+	# Switch from real mode into protected mode
+	# 1)  Disable interrupts, since any interrupt during this
+	#     process would demolish us.  (We don't turn interrupts
+	#     back on until we are safely in our C program, and have
+	#     set up an Interrupt Descriptor Table.)
         cli # disable interrupts
+	# 2)  Set the Global Descriptor Table Register (GDTR) to our
+	#     simple Global Descriptor Table specified at the end of
+	#     the boot-loader.  We are in 16-bit real mode.
+	#     (We need a data32 prefix to ensure that all 32 bits of
+	#     the GDT descriptor are loaded; default is to load only
+	#     24 bits.  The CPU doesn't need an addr32 prefix but ELF
+	#     doesn't do 16-bit relocations.)
         data32 addr32 lgdt gdtdesc # load GDTR with base address of GDT
+	# 3)  Turn on protected mode by modifying Control Register cr0.
+	#     See IA32 Manual Volume 3A, Section 2.5 for details of
+	#     which bit(s) to set.  Don't turn on paging - we don't
+	#     need it!  Also, you should not modify any other bits in
+	#     cr0:  read it, OR in the appropriate bit(s), then write
+	#     it back.
         movl    %cr0, %eax # read in cr0 control register
         orl     $CR0_PE, %eax # set bits to turn on protection mode        
         movl    %eax, %cr0 # enable protected mode
-
-	#---------------------------------------------------------------------
-	# TODO:  Switch from real mode into protected mode.  The process is
-	#        straightforward:
-	#
-	#        1)  Disable interrupts, since any interrupt during this
-	#            process would demolish us.  (We don't turn interrupts
-	#            back on until we are safely in our C program, and have
-	#            set up an Interrupt Descriptor Table.)
-	#
-	#        2)  Set the Global Descriptor Table Register (GDTR) to our
-	#            simple Global Descriptor Table specified at the end of
-	#            the boot-loader.  You will need to write it like this,
-	#            since we are still in 16-bit real mode:
-	#
-	#            data32 addr32 lgdt gdtdesc
-	#
-	#            (We need a data32 prefix to ensure that all 32 bits of
-	#            the GDT descriptor are loaded; default is to load only
-	#            24 bits.  The CPU doesn't need an addr32 prefix but ELF
-	#            doesn't do 16-bit relocations.)
-	#
-	#        3)  Turn on protected mode by modifying Control Register cr0.
-	#            See IA32 Manual Volume 3A, Section 2.5 for details of
-	#            which bit(s) to set.  Don't turn on paging - we don't
-	#            need it!  Also, you should not modify any other bits in
-	#            cr0:  read it, OR in the appropriate bit(s), then write
-	#            it back.
-	#
-	#            You should use the constants in the boot.h header file
-	#            for this step, to make your code more readable.
-	#
-	#        See also IA32 Manual Volume 3A, Section 8.9.1 for the general
-	#        overview.  (We only do the parts that are relevant to our
-	#        needs in this project!)
-	#
-	#        REMOVE THIS COMMENT BLOCK WHEN YOU WRITE THIS CODE.  (FEEL
-	#        FREE TO INCORPORATE ANY OF THE ABOVE COMMENTS INTO YOUR CODE!)
-	#---------------------------------------------------------------------
 
 	# We're now in protected mode, but still in a 16-bit segment.  The
 	# CPU still has the real-mode code segment cached in %cs's segment
@@ -174,33 +149,19 @@ call_c_entry:
 
 	cld			# C code expects this...
 	movl        $0, %ebp    # Null-terminate the program's backtrace
-        #----STARTED MY CODE HERE (KAPIL)
-        # No idea how to use the e_entry field
+	
+        # Call the entry-point of the C program!  The program is
+	# compiled and linked into an ELF file, so the file's ELF
+	# header will specify the entry-point into the program.
+	# The e_entry field is a 32-bit value at a fixed offset
+        # from the start of the fiel data.
+
         movl        $PROGRAM_BASE_ADDR, %eax # start of file (main program) data
         addl        $0x18, %eax # e_entry is at a fixed 0x18 offset from start
                                 # and contains memory address of C entry point
+        # Call the C function whose address is stored in %eax
+        # - parentheses get the address that %eax is pointing to
         call        *(%eax)
-        # Is this using cdecl?
-
-	#---------------------------------------------------------------------
-	# TODO:  Call the entry-point of the C program!  The program is
-	#        compiled and linked into an ELF file, so the file's ELF
-	#        header will specify the entry-point into the program.  See
-	#        the e_entry field; it is a 32-bit value.
-	#
-	#        The ELF-header is the very first data-structure in the data
-	#        that was loaded by the boot-loader, so the e_entry field
-	#        will be at a fixed offset from the start of the file data.
-	#
-	#        You will need to use an indirect call, where the address to
-	#        call is in a register.  The format is:  call *%somereg
-	#
-	#        Don't forget that you are calling a C function, so follow
-	#        cdecl!
-	#
-	#        REMOVE THIS COMMENT BLOCK WHEN YOU WRITE THIS CODE.  (FEEL
-	#        FREE TO INCORPORATE ANY OF THE ABOVE COMMENTS INTO YOUR CODE!)
-	#---------------------------------------------------------------------
 
 	#=====================================================================
 	# The rest of this file contains helper functions for the 16-bit
