@@ -44,7 +44,7 @@ static inline void lidt(void* base, uint16_t size) {
         uint16_t length;
         void*    base;
     } __attribute__((packed)) IDTR = { size, base };
- 
+
     // let the compiler choose an addressing mode
     asm ( "lidt %0" : : "m"(IDTR) );
 }
@@ -81,13 +81,13 @@ static inline void lidt(void* base, uint16_t size) {
 #define ICW1_INTERVAL4  0x04        /* Call address interval 4 (8) */
 #define ICW1_LEVEL      0x08        /* Level triggered (edge) mode */
 #define ICW1_INIT       0x10        /* Initialization - required! */
- 
+
 #define ICW4_8086       0x01        /* 8086/88 (MCS-80/85) mode */
 #define ICW4_AUTO       0x02        /* Auto (normal) EOI */
 #define ICW4_BUF_SLAVE  0x08        /* Buffered mode/slave */
 #define ICW4_BUF_MASTER 0x0C        /* Buffered mode/master */
 #define ICW4_SFNM       0x10        /* Special fully nested (not) */
- 
+
 /* Remap the interrupts that the PIC generates.  The default interrupt
  * mapping conflicts with the IA32 protected-mode interrupts for indicating
  * hardware/software exceptions, so we need to map them elsewhere.
@@ -99,10 +99,10 @@ static inline void lidt(void* base, uint16_t size) {
  */
 void PIC_remap(int offset1, int offset2) {
     unsigned char a1, a2;
- 
+
     a1 = inb(PIC1_DATA);                        // save masks
     a2 = inb(PIC2_DATA);
- 
+
     // starts the initialization sequence (in cascade mode)
     outb(PIC1_COMMAND, ICW1_INIT+ICW1_ICW4);
     io_wait();
@@ -131,7 +131,7 @@ void PIC_remap(int offset1, int offset2) {
 void IRQ_set_mask(unsigned char IRQline) {
     uint16_t port;
     uint8_t value;
- 
+
     if(IRQline < 8) {
         port = PIC1_DATA;
     }
@@ -140,7 +140,7 @@ void IRQ_set_mask(unsigned char IRQline) {
         IRQline -= 8;
     }
     value = inb(port) | (1 << IRQline);
-    outb(port, value);        
+    outb(port, value);
 }
 
 
@@ -177,6 +177,14 @@ void init_interrupts(void) {
      *        Once the entire IDT has been cleared, use the lidt() function
      *        defined above to install our IDT.
      */
+    /* Zero out Interrupt Descriptor Table. */
+    char *iter = (char *) interrupt_descriptor_table;
+    for (int i = 0; i < NUM_INTERRUPTS * sizeof(IDT_Descriptor); i++) {
+        *(iter + i) = 0;
+    }
+
+    lidt((void *) interrupt_descriptor_table,
+        NUM_INTERRUPTS * sizeof(IDT_Descriptor));
 
     /* Remap the Programmable Interrupt Controller to deliver its interrupts
      * to 0x20-0x33 (32-45), so that they don't conflict with the IA32 built-
@@ -213,6 +221,11 @@ void install_interrupt_handler(int num, void *handler) {
      *        REMOVE THIS COMMENT WHEN YOU WRITE THE CODE.  (FEEL FREE TO
      *        INCORPORATE THE ABOVE COMMENTS IF YOU WISH.)
      */
+     // Pointer to new descriptor
+     IDT_Descriptor *new_desc = interrupt_descriptor_table + num
+     new_desc->offset_15_0 = handler & 0xFFFF; // Get lower 16 bits
+     new_desc->selector = SEL_CODESEG; // Code selector from boot.h
+     new_desc->zero = 0;
+     new_desc->type_attr = 0b10001110; // Refer to Pg 205 of IA32 Vol 3A
+     new_desc->offset_31_16 = handler & 0xFFFF0000; // Get higher 16 bits
 }
-
-
