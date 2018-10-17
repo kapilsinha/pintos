@@ -21,7 +21,25 @@
  *
  * See http://wiki.osdev.org/PS/2_Keyboard for details.
  */
-#define KEYBOARD_PORT 0x60
+
+// TODO: Could probably put all this into one function but nah
+bool static volatile a_pressed = 0;
+bool static volatile z_pressed = 0;
+bool static volatile k_pressed = 0;
+bool static volatile m_pressed = 0;
+
+bool is_a_pressed(void) {
+    return a_pressed;
+};
+bool is_z_pressed(void) {
+    return z_pressed;
+};
+bool is_k_pressed(void) {
+    return k_pressed;
+};
+bool is_m_pressed(void) {
+    return m_pressed;
+};
 
 
 /* TODO:  You can create static variables here to hold keyboard state.
@@ -36,6 +54,26 @@
  *        so that nothing gets mangled...
  */
 
+void keyboard_interrupt(void) {
+    /* Since we haven't acknowledged this interrupt yet, don't have to worry
+        about other interrupts. */
+    unsigned char scan_code = inb(KEYBOARD_PORT);
+    switch(scan_code) {
+        case A_PRESS:
+            a_pressed = 1;
+            break;
+        case A_RELEASE:
+            a_pressed = 0;
+            break;
+        case Z_PRESS:
+            z_pressed = 1;
+            break;
+        case Z_RELEASE:
+            z_pressed = 0;
+            break;
+    }
+}
+
 
 void init_keyboard(void) {
     /* TODO:  Initialize any state required by the keyboard handler. */
@@ -43,5 +81,6 @@ void init_keyboard(void) {
     /* TODO:  You might want to install your keyboard interrupt handler
      *        here as well.
      */
-}
+     install_interrupt_handler(1, irq1_handler)
 
+}
