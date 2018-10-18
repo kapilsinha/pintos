@@ -183,8 +183,7 @@ void init_interrupts(void) {
         *(iter + i) = 0;
     }
 
-    lidt((void *) interrupt_descriptor_table,
-        NUM_INTERRUPTS * sizeof(IDT_Descriptor));
+    lidt(interrupt_descriptor_table, NUM_INTERRUPTS * sizeof(IDT_Descriptor));
 
     /* Remap the Programmable Interrupt Controller to deliver its interrupts
      * to 0x20-0x33 (32-45), so that they don't conflict with the IA32 built-
@@ -222,10 +221,10 @@ void install_interrupt_handler(int num, void *handler) {
      *        INCORPORATE THE ABOVE COMMENTS IF YOU WISH.)
      */
      // Pointer to new descriptor
-     IDT_Descriptor *new_desc = interrupt_descriptor_table + num;
-     new_desc->offset_15_0 = (uint32_t)handler & 0x0000FFFF; // Get lower 16 bits
+     IDT_Descriptor *new_desc = &interrupt_descriptor_table[num];
+     new_desc->offset_15_0 = (uint32_t)handler & 0x0000FFFF; // Low 16 bits
      new_desc->selector = SEL_CODESEG; // Code selector from boot.h
      new_desc->zero = 0;
      new_desc->type_attr = 0b10001110; // Refer to Pg 205 of IA32 Vol 3A
-     new_desc->offset_31_16 = (uint32_t)handler >> 16; // Get higher 16 bits
+     new_desc->offset_31_16 = (uint32_t)handler >> 16; // Get high 16 bits
 }

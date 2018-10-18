@@ -12,10 +12,10 @@
 #define M_RELEASE 0xB2
 #define Q_PRESS 0x10
 
-bool is_a_pressed(void);
-bool is_z_pressed(void);
-bool is_k_pressed(void);
-bool is_m_pressed(void);
+int is_a_pressed(void);
+int is_z_pressed(void);
+int is_k_pressed(void);
+int is_m_pressed(void);
 void keyboard_interrupt(void);
 void init_keyboard(void);
 

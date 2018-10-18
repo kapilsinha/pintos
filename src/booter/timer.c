@@ -1,3 +1,5 @@
+#include "interrupts.h"
+#include "handlers.h"
 #include "timer.h"
 #include "ports.h"
 
@@ -45,7 +47,21 @@
  *        You should probably declare variables "volatile" so that the
  *        compiler knows they can be changed by exceptional control flow.
  */
+int static volatile time_ticks = 0;
 
+/* Sleeps the program for specified number of ticks where ticks occur
+    100 times per second. */
+void sleep(int ticks) {
+    // Set time to 0 just to avoid overflow or other weird things
+    time_ticks = 0;
+    while (time_ticks < ticks) {
+        continue;
+    }
+}
+
+void timer_handler(void) {
+    time_ticks++;
+}
 
 void init_timer(void) {
 
@@ -66,4 +82,5 @@ void init_timer(void) {
     /* TODO:  You might want to install your timer interrupt handler
      *        here as well.
      */
+     install_interrupt_handler(TIMER_INTERRUPT, irq0_handler);
 }
