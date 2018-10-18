@@ -13,9 +13,13 @@ void c_start(void) {
      enable_interrupts();
 
     /* Loop forever, so that we don't fall back into the bootloader code. */
+    int ye = 69;
     while (1) {
-        if (is_a_pressed()) {
-            break;
+        if (is_z_pressed()) {
+            ye++;
+            if (ye == 101) {
+                ye -= 1;
+            }
         }
     }
 }

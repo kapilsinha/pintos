@@ -74,6 +74,14 @@ void keyboard_handler(void) {
         case Z_RELEASE:
             z_pressed = 0;
             break;
+        case K_PRESS:
+            k_pressed = 1;
+        case K_RELEASE:
+            k_pressed = 0;
+        case M_PRESS:
+            m_pressed = 1;
+        case M_RELEASE:
+            m_pressed = 0;
     }
 }
 
