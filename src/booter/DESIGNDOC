@@ -12,7 +12,7 @@ Kapil Sinha <ksinha@caltech.edu>
 Karthik Nair <knair@caltech.edu>
 Joseph Tilahun <jtilahun@caltech.edu>
 
->> Specify how many late tokens you are using on this assignment:  
+>> Specify how many late tokens you are using on this assignment:
    0
 
 >> What is the Git repository and commit hash for your submission?
@@ -20,7 +20,7 @@ Joseph Tilahun <jtilahun@caltech.edu>
    on Moodle.)
 
    Repository URL: https://github.com/kapilsinha/pintos/
-   commit: 
+   commit:
 
 ---- PRELIMINARIES ----
 
@@ -84,7 +84,7 @@ not required by the question.
    During gameplay, the ball is hit in this way repeatedly back and forth.
    A player earns a point when the other player fails to return the ball to
    him or her. The goal of the game is to reach three points first.
-   
+
 
 ---- DATA STRUCTURES ----
 
@@ -97,7 +97,7 @@ not required by the question.
    of the game, including the information associated with the current state of
    each player, the information associated with the current state of the ball,
    and indicators as to whether the round is over and whether the game is over.
-   
+
 
 ---- SYNCHRONIZATION ----
 
@@ -123,7 +123,7 @@ not required by the question.
 >> to accomplish its tasks?  If so, what tasks?
    Yes, our program relies on busy-waiting to accomplish its tasks. The
    timer uses busy-waiting for performing sleeping in the sleeping function.
-   
+
 
 ---- RATIONALE ----
 
@@ -232,14 +232,22 @@ not required by the question.
 
 >> D1: What state does your timer subsystem manage?  Describe the variables
 >> or data structures that it maintains, and how they are used.
+The timer subsystem uses an integer to keep track of the number of processor
+ticks that have passed. When the sleep() function is called, the function
+goes into a while loop until this integer has been incremented by the desired
+amount and then returns.
 
 ---- ALGORITHMS ----
 
 >> D2: What abstraction does your timer code present to your main program?
 >> Briefly describe the higher-level operations you decided to implement.
+The timer code provides a simple sleep function which allows the program to
+sleep for a certain amount of time to make the game run at a realistic speed.
 
 >> D3: Did you change the timer frequency from 100Hz?  If so, what did you
 >> change it to, and why?
+No, we did not change the timer frequency from 100Hz because this seemed to
+work the best for our game.
 
 ---- SYNCHRONIZATION ----
 
@@ -247,6 +255,9 @@ not required by the question.
 >> for timer interrupts to generate race conditions in updating your
 >> program's global state?  If so, what steps did you take to ensure that
 >> such situations cannot occur?
+No, our program for timer events should not generate race conditions because
+the sleep() function keeps executing until it is done and only then will the
+next sleep() function be called.
 
             KEYBOARD SUBSYSTEM
             ==================
@@ -255,18 +266,32 @@ not required by the question.
 
 >> E1: What state does your keyboard subsystem manage?  Describe the variables
 >> or data structures that it maintains, and how they are used.
+Since we would need flags for determining whether or not a particular key was
+pressed anyway, we decided not to use a queue and simply have the keyboard
+subsystem manage a set of boolean variables with one for each key that we
+needed for the game. Each time a scan code for pressing the key is read,
+its boolean variable is set to 1. When a scan code for releasing the key is
+read, the boolean variable is set to 0.
 
 >> E2: How do your data structures handle keys with multi-byte scan-codes?
+We did not use any keys that generate multi-byte scan-codes and did not have
+to handle this case.
 
 ---- ALGORITHMS ----
 
 >> E3: What abstraction does your keyboard code present to your main program?
 >> Briefly describe the higher-level operations you decided to implement.
+The keyboard code provides multiple is_<key>_pressed() functions to check if
+<key> is pressed or not.
 
 >> E4: Does your keyboard subsystem expose scan-codes directly to your main
 >> program, or does it preprocess them and expose other information to your
 >> main program?  If scan-code data is preprocessed, briefly describe what
 >> information is actually exposed, and how it is derived from scan-codes.
+No, the keyboard subsystem does not expose scan-codes directly to our main
+program. It preprocesses the scan codes and then sets the appropriate boolean
+variable for that key to 0 or 1 as per the code read. The main program then
+uses a function to get the value of this boolean variable. 
 
 ---- SYNCHRONIZATION ----
 
@@ -325,5 +350,3 @@ penalized.  We can't fix things until we know about them.  :-)
 
 >> Any other comments?
    No.
-
-
