@@ -1,7 +1,6 @@
 #include <string.h>
 #include "game.h"
 #include "interrupts.h"
-//#include "video.h"
 #include "timer.h"
 #include "keyboard.h"
 
@@ -172,7 +171,6 @@ void render_game_frame(void) {
             }
         }
     }
-    // memset(&frame, 0, (HEIGHT * WIDTH) * sizeof(char));
 
     for (int x = game.player_1.paddle.top_left.x;
              x <= game.player_1.paddle.bottom_right.x; x++) {
