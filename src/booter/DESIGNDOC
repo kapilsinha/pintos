@@ -26,10 +26,12 @@ Joseph Tilahun <jtilahun@caltech.edu>
 
 >> If you have any preliminary comments on your submission, notes for the
 >> TAs, or extra credit, please give them here.
+N/A
 
 >> Please cite any offline or online sources you consulted while
 >> preparing your submission, other than the Pintos documentation, course
 >> text, lecture notes, and course instructors.
+N/A
 
                  PC BOOTER
                  =========
@@ -42,9 +44,9 @@ which parts.
 
 >> L1: How many hours did each team member spend on this assignment?
    Make sure that each member's total time is listed.
-   Kapil    20 h
-   Karthik  20 h
-   Joseph   15 h
+   Kapil    17 h
+   Karthik  12 h
+   Joseph   8 h
 
 >> L2: What did each team member focus on for this assignment?  Keep
    descriptions to 25-30 words or less.
@@ -159,13 +161,15 @@ not required by the question.
 >> memory occupied by the DAP get reclaimed after it is used?  If not,
 >> why not?
    We decided to store the DAP on the stack. The memory occupied by the DAP
-   gets reclaimed after it is used.
+   gets reclaimed after it is used, since we pop off the elements from the
+   stack after calling int 13 (the system call).
 
 >> B2: How many sectors does your bootloader load?  How did you arrive
 >> at this number?  Briefly explain your rationale.
    Our bootloader loads 20 sectors. We arrived at this number because it is
    the minimum number of sectors that are needed to contain the program.bin
-   file.
+   file - which is over 5 KB; hence we needed at least 10 sectors and loaded
+   20 for good measure. 
 
 >> B3: Does your bootloader pass any information to the main program?
 >> (If not, just say no.)  If so, what information is passed, and how
@@ -176,9 +180,16 @@ not required by the question.
 
 >> B3: Briefly describe how your bootloader brings your program into
 >> memory.  Does it perform one large load, or multiple smaller loads?
+The bootloader brings the program into memory in one large load, since the
+extended read operations call just reads in all the data at once from the
+few sectors (note that we only read in from one hard drive, which we stored
+in %dl).
 
 >> B4: Did you add any BIOS calls to your bootloader to prepare for your
 >> main program?  (i.e. things that aren't available in protected mode)
+The only BIOS calls are INT 10h and INT 13h, which we used to hide the
+cursor and then read in the data from the disk, respectively (both of which
+we call prior to shifting to protected mode).
 
               VIDEO SUBSYSTEM
               ===============
