@@ -53,27 +53,29 @@ void keyboard_handler(void) {
     /* Since we haven't acknowledged this interrupt yet, don't have to worry
         about other interrupts. */
     unsigned char scan_code = inb(KEYBOARD_PORT);
-    switch(scan_code) {
-        case A_PRESS:
-            a_pressed = 1;
-            break;
-        case A_RELEASE:
-            a_pressed = 0;
-            break;
-        case Z_PRESS:
-            z_pressed = 1;
-            break;
-        case Z_RELEASE:
-            z_pressed = 0;
-            break;
-        case K_PRESS:
-            k_pressed = 1;
-        case K_RELEASE:
-            k_pressed = 0;
-        case M_PRESS:
-            m_pressed = 1;
-        case M_RELEASE:
-            m_pressed = 0;
+    if (scan_code == A_PRESS) {
+        a_pressed = 1;
+    }
+    if (scan_code == A_RELEASE) {
+        a_pressed = 0;
+    }
+    if (scan_code == K_PRESS) {
+        k_pressed = 1;
+    }
+    if (scan_code == K_RELEASE) {
+        k_pressed = 0;
+    }
+    if (scan_code == M_PRESS) {
+        m_pressed = 1;
+    }
+    if (scan_code == M_RELEASE) {
+        m_pressed = 0;
+    }
+    if (scan_code == Z_PRESS) {
+        z_pressed = 1;
+    }
+    if (scan_code == Z_RELEASE) {
+        z_pressed = 0;
     }
 }
 
