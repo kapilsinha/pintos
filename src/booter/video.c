@@ -38,14 +38,14 @@ void print_string(const char *str) {
     while (*str != '\0') {
         uint16_t info;
         
-        if (cursor_pos.x < WIDTH - 1) {
+        if (cursor_pos.x <= WIDTH - 1) {
             info = (background_color << 12) | (foreground_color << 8) | *str;
             *video_buffer = info;
             video_buffer++;
             str++;
             cursor_pos.x++;
         }
-        else if (cursor_pos.y < HEIGHT - 1) {
+        else if (cursor_pos.y <= HEIGHT - 1) {
             cursor_pos.x = 0;
             cursor_pos.y++;
         }

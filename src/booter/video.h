@@ -30,8 +30,8 @@
 
 
 typedef struct position {
-    char x;
-    char y;
+    int x;
+    int y;
 } Position;
 
 
