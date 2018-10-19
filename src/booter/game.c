@@ -23,19 +23,19 @@ void c_start(void) {
     while (1) {
         clear_screen();
         init_game();
-	game.player_1.score = 0;
-	game.player_2.score = 0;
-    	game.is_game_over = 0;
-    	game.is_round_over = 0;
+        game.player_1.score = 0;
+        game.player_2.score = 0;
+        game.is_game_over = 0;
+        game.is_round_over = 0;
         render_game_frame();
         while (! game.is_game_over) {
             sleep(5);
             clear_screen();
             run();
         }
-	clear_screen();
+        clear_screen();
         print_string("GAME OVER");
-	sleep(400);
+        sleep(400);
     }
 }
 
@@ -60,8 +60,8 @@ void init_game(void) {
     
     game.ball.position.x = (int) (WIDTH / 2);
     game.ball.position.y = (int) (HEIGHT / 2);
-    game.ball.velocity.x = 1; // TODO: randomize this later
-    game.ball.velocity.y = 0; // TODO: change to 1
+    game.ball.velocity.x = 1;
+    game.ball.velocity.y = 1;
 }
 
 void run(void) {
@@ -69,28 +69,28 @@ void run(void) {
     if (game.is_round_over) {
         // Print score
         clear_screen();
-	char score_player_1[20] = "Player 1 score: ";
-	char score_player_2[30] = "   Player 2 score: ";
-	if (game.player_1.score < 10) {
-	    score_player_1[16] = '0' + game.player_1.score;
-	}
-	else { // Hard coding that max score is 2 digits
-	    score_player_1[16] = '0' + (game.player_1.score / 10);
-	    score_player_1[17] = '0' + (game.player_1.score - 10);
-	}
-	if (game.player_2.score < 10) {
-	    score_player_2[19] = '0' + game.player_2.score;
-	}
-	else { // Hard coding that max score is 2 digits
-	    score_player_2[19] = '0' + (game.player_2.score / 10);
-	    score_player_2[20] = '0' + (game.player_2.score - 10);
-	}
+        char score_player_1[20] = "Player 1 score: ";
+        char score_player_2[30] = "   Player 2 score: ";
+        if (game.player_1.score < 10) {
+            score_player_1[16] = '0' + game.player_1.score;
+        }
+        else { // Hard coding that max score is 2 digits
+            score_player_1[16] = '0' + (game.player_1.score / 10);
+            score_player_1[17] = '0' + (game.player_1.score - 10);
+        }
+        if (game.player_2.score < 10) {
+            score_player_2[19] = '0' + game.player_2.score;
+        }
+        else { // Hard coding that max score is 2 digits
+            score_player_2[19] = '0' + (game.player_2.score / 10);
+            score_player_2[20] = '0' + (game.player_2.score - 10);
+        }
         print_string(score_player_1);
         print_string(score_player_2);
         sleep(150);
         init_game();
         render_game_frame();
-	game.is_round_over = 0;
+        game.is_round_over = 0;
     }
     render_game_frame();
 }
@@ -102,13 +102,13 @@ void compute_game_frame(void) {
     // hitting the top of the paddle decrements the ball's velocity)
     int third = PADDLE_LENGTH / 3;
     if (is_collision_paddle_1(&game.player_1.paddle, &game.ball)) {
-    	game.ball.velocity.x *= -1;
-    	game.ball.velocity.y *= -1;
+        game.ball.velocity.x *= -1;
+        game.ball.velocity.y *= -1;
         if (game.ball.position.y < game.player_1.paddle.top_left.y + third) {
             game.ball.velocity.y -= 1;
         }
-	else if (game.ball.position.y
-			> game.player_1.paddle.bottom_right.y - third) {
+        else if (game.ball.position.y
+            > game.player_1.paddle.bottom_right.y - third) {
             game.ball.velocity.y += 1;
         }
     }
@@ -118,8 +118,8 @@ void compute_game_frame(void) {
         if (game.ball.position.y < game.player_2.paddle.top_left.y + third) {
             game.ball.velocity.y -= 1;
         }
-	else if (game.ball.position.y
-			> game.player_2.paddle.bottom_right.y - third) {
+        else if (game.ball.position.y
+            > game.player_2.paddle.bottom_right.y - third) {
             game.ball.velocity.y += 1;
         }
     }
@@ -139,8 +139,8 @@ void compute_game_frame(void) {
     
     if (has_scored_player_1(&game.ball)) {
         game.player_1.score++;
-	game.is_round_over = 1;
-	clear_screen();
+        game.is_round_over = 1;
+        clear_screen();
         if (is_winner(&game.player_1)) {
             game.is_game_over = 1;
             clear_screen();
@@ -149,7 +149,7 @@ void compute_game_frame(void) {
     }
     if (has_scored_player_2(&game.ball)) {
         game.player_2.score++;
-	game.is_round_over = 1;
+        game.is_round_over = 1;
         if (is_winner(&game.player_2)) {
             game.is_game_over = 1;
             clear_screen();
@@ -166,11 +166,11 @@ void render_game_frame(void) {
         for (int j = 0; j < WIDTH; j++) {
             if (j == WIDTH / 2) {
                 frame[i * WIDTH + j] = '|';
-	    }
-	    else {
+            }
+            else {
                 frame[i * WIDTH + j] = ' ';
             }
-	}
+        }
     }
     // memset(&frame, 0, (HEIGHT * WIDTH) * sizeof(char));
 
