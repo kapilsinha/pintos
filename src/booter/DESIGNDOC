@@ -83,7 +83,7 @@ not required by the question.
    should hit the ball to the other player's side by using his or her paddle.
    During gameplay, the ball is hit in this way repeatedly back and forth.
    A player earns a point when the other player fails to return the ball to
-   him or her. The goal of the game is to reach eleven points first.
+   him or her. The goal of the game is to reach three points first.
    
 
 ---- DATA STRUCTURES ----
@@ -189,21 +189,41 @@ not required by the question.
 >> or a graphical mode?  Where does the video buffer start?  How is data
 >> represented in this mode?  (Please be brief; we don't need complete
 >> documentation on the video system.)
+   Our program uses a text video display mode. The video buffer starts at
+   address 0xB8000. In this mode, each position on the display is represented
+   as 16 continguous bits (2 bytes) in memory. The lower byte represents the
+   character value, and the upper byte represents the color of the character:
+   the high nibble represents the background color, and the low nibble
+   represents the foreground color.
 
 >> C2: Does your video code maintain any variables or data structures to
 >> facilitate video output?  Briefly describe these values and their
 >> purposes here.
+   Our video code maintains the colors, the video buffer, and the current
+   cursor position as global variables. In particular, the current foreground
+   and background colors are represented in variables with the type
+   `static char'. As well, the current position that is to be written to in
+   the video buffer is represented in a variable with the type `uint16_t *'.
+   Also, the current position that is to be written to on the screen (the
+   cursor position) is represented in a variable with the type `Position'.
 
 ---- ALGORITHMS ----
 
 >> C3: What abstraction does your video code present to your main program?
 >> Briefly describe the higher-level operations you decided to implement.
+   Our video code provides abstractions to print characters to the screen and
+   clear the screen. Printing strings to the screen involves writing to
+   video memory incrementally, character by character. Clearing the screen
+   involves zeroing out the entire region of video memory, which has the
+   effect of making the screen completely blank.
 
 ---- RATIONALE ----
 
 >> C4: Did you take any specific steps to improve the appearance of your
 >> program's display output?  For example, using Extended ASCII Codes, or
 >> choosing specific colors to represent different things?
+   No, we did not take any specific steps to improve the appearance of our
+   program's display output.
 
               TIMER SUBSYSTEM
               ===============
@@ -277,21 +297,33 @@ penalized.  We can't fix things until we know about them.  :-)
 
 >> In your opinion, was this assignment, or any of the parts of it, too
 >> easy or too hard?  Did it take too long or too little time?
+   This assignment was of a reasonable difficulty. The amount of time it
+   took to complete was about right.
 
 >> Did you find that working on a particular part of the assignment gave
 >> you greater insight into some aspect of OS design?
+   Yes, we found that working on the bootloader gave us greater insight into
+   bootstrapping, a part of OS design. Implement ng the bootloader improved
+   our understanding of how an OS is loaded in memory when a computer is
+   powered on.
 
 >> Were there any parts of the assignment that you felt were unnecessarily
 >> tedious or pointless?
+   No, there were no parts of the assignment that we felt were unnecessarily
+   tedious or pointless.
 
 >> Is there some particular fact or hint we should give students in
 >> future quarters to help them solve the problems?  Conversely, did you
 >> find any of our guidance to be misleading?
+   Knowing what values to put into the DAP table from the outset would have
+   be helpful to students in future quarters.
 
 >> Do you have any suggestions for the instructor and/or TAs to more
 >> effectively assist students, either for future quarters or the remaining
 >> projects?
+   No.
 
 >> Any other comments?
+   No.
 
 
