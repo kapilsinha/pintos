@@ -1,6 +1,6 @@
 #include "video.h"
 
-#define NUM_SECONDS_INIT_PAUSE 1
+#define NUM_SECONDS_INIT_PAUSE 100
 #define INTERVAL 18
 
 #define MAX_SCORE 11
@@ -47,6 +47,7 @@ typedef struct game {
     Player player_1;
     Player player_2;
     Ball ball;
+    int is_done;
 } Game;
 
 void init_game(void);

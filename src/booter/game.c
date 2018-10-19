@@ -1,15 +1,13 @@
-#include <unistd.h>
-
+//#include <unistd.h>
 #include "game.h"
-#include "video.h"
-#include "keyboard.h"
 #include "interrupts.h"
+//#include "video.h"
+#include "timer.h"
+#include "keyboard.h"
 
 static Game game;
 
 /* This is the entry-point for the game! */
-#include "interrupts.h"
-#include "keyboard.h"
 void c_start(void) {
     /* TODO:  You will need to initialize various subsystems here.  This
      *        would include the interrupt handling mechanism, and the various
@@ -17,21 +15,30 @@ void c_start(void) {
      *        enable_interrupts() to start interrupt handling, and go on to
      *        do whatever else you decide to do!
      */
+    /* This is the entry-point for the game! */
+    init_interrupts();
     init_video();
+    init_timer();
     init_keyboard();
     
     enable_interrupts();
     clear_screen();
     print_string(welcome_screen);
-    
-    while (!is_a_pressed()) {
-        
+
+    /*
+    while (1) {
+	if (is_z_pressed()) {
+            print_string("poop");
+	}
+	print_string("eeee");
+        sleep(1);
+        print_string("rrrrr");
     }
-    
-    clear_screen();
+    */
+
     sleep(NUM_SECONDS_INIT_PAUSE);
+    clear_screen();
     init_game();
-    
     /* Loop forever, so that we don't fall back into the bootloader code. */
     while (1) {
         while (!is_done(game)) {
@@ -59,6 +66,8 @@ void init_game(void) {
     game.ball.position.y = HEIGHT / 2;
     game.ball.velocity.x = 1;
     game.ball.velocity.y = 1;
+
+    game.is_done = 0;
 }
 
 void run(void);
@@ -66,17 +75,17 @@ void run(void);
     render_game_frame();
 }
 
-
 void compute_game_frame(void) {
     if (is_winner(game.player_1)) {
+        game.is_done = 1;
         clear_screen();
         print_string("Player 1 wins!");
     }
     if (is_winner(game.player_2)) {
+        game.is_done = 1;
         clear_screen();
         print_string("Player 2 wins!");
     }
- 
 
     if (is_collision(game.player_1.paddle, game.ball)) {
         game.ball.velocity.x = -game.ball.velocity.x;
@@ -129,7 +138,7 @@ void render_game_frame(void) {
         frame[p * WIDTH + game.player_2.paddle.position.x] = '|';
     }
     
-    frame[game.ball.position.y * WIDTH + game.ball.position.x] = 'X';
+    frame[game.ball.position.y * WIDTH + game.ball.position.x] = 'X'; // (char) 254
     
     write_string(frame);
 }
@@ -149,5 +158,5 @@ int is_collision(Paddle paddle, Ball ball) {
 }
 
 int is_winner(Player player) {
-    return player.score = MAX_SCORE;
+    return player.score == MAX_SCORE;
 }

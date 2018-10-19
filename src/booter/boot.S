@@ -65,7 +65,7 @@ boot_start:
         pushl   $0x20000000     # segment:offset of buffer to receive data
         # Number of sectors is number of sectors that are needed to contain
         # program.bin - e.g. if program.bin is 4.6KB, we need ~10 sectors
-        pushw   $10             # number of 512-byte sectors to read
+        pushw   $20             # number of 512-byte sectors to read
         # pushb   $0            # unused, set to 0
         # pushb   $0x10         # size of DAP (16 bytes)
 	pushw	$0x10           # concatenation of above two bytes (commented)

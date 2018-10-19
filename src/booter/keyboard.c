@@ -25,7 +25,6 @@
  * See http://wiki.osdev.org/PS/2_Keyboard for details.
  */
 
-// TODO: Could probably put all this into one function but nah
 int static volatile a_pressed = 0;
 int static volatile z_pressed = 0;
 int static volatile k_pressed = 0;
@@ -45,16 +44,9 @@ int is_m_pressed(void) {
 };
 
 
-/* TODO:  You can create static variables here to hold keyboard state.
- *        Note that if you create some kind of circular queue (a very good
- *        idea, you should declare it "volatile" so that the compiler knows
- *        that it can be changed by exceptional control flow.
- *
- *        Also, don't forget that interrupts can interrupt *any* code,
- *        including code that fetches key data!  If you are manipulating a
- *        shared data structure that is also manipulated from an interrupt
- *        handler, you might want to disable interrupts while you access it,
- *        so that nothing gets mangled...
+/* We maintain simple boolean variables that contain whether a certain
+ * key is pressed. These variables are only modified through the keyboard
+ * handler.
  */
 
 void keyboard_handler(void) {
@@ -86,13 +78,6 @@ void keyboard_handler(void) {
 }
 
 void init_keyboard(void) {
-    /* TODO:  Initialize any state required by the keyboard handler. */
-
-    /* TODO:  You might want to install your keyboard interrupt handler
-     *        here as well.
-     */
      // Set to 0x21 because we remapped the interrupts to 0x20
      install_interrupt_handler(KEYBOARD_INTERRUPT, irq1_handler);
-     install_interrupt_handler(TIMER_INTERRUPT, irq1_handler);
-
 }
