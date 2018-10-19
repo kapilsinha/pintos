@@ -13,13 +13,14 @@ Karthik Nair <knair@caltech.edu>
 Joseph Tilahun <jtilahun@caltech.edu>
 
 >> Specify how many late tokens you are using on this assignment:  
+   0
 
 >> What is the Git repository and commit hash for your submission?
    (You only need to include the commit-hash in the file you submit
    on Moodle.)
 
-   Repository URL:  
-   commit ...
+   Repository URL: https://github.com/kapilsinha/pintos/
+   commit: 
 
 ---- PRELIMINARIES ----
 
@@ -41,9 +42,20 @@ which parts.
 
 >> L1: How many hours did each team member spend on this assignment?
    Make sure that each member's total time is listed.
+   Kapil    20 h
+   Karthik  20 h
+   Joseph   15 h
 
 >> L2: What did each team member focus on for this assignment?  Keep
    descriptions to 25-30 words or less.
+   Kapil focused on implementing the bootloader. He programmed the assembly
+   code that runs at boot time to load the game into memory. Karthik focused
+   on setting up the interrupts. He implemented the setting up of the
+   interrupts descriptor table as well as the timer and keyboard interrupts.
+   Joseph focused on setting up the video interface and implementing the game
+   itself. He implemented the interface to video memory, the structs that are
+   used to represent the game internally, and the basic game logic that is
+   used to make the game operate cleanly.
 
 Note that this design document is a bit long.  Most of the questions can be
 answered pretty briefly.  Don't feel a need to write a long answer if it is
@@ -56,9 +68,23 @@ not required by the question.
 
 >> A1: In a few sentences, describe what kind of game or demo program your
 >> PC booter implements.
+   Our PC booter implements the game Pong. Pong is one of the earliest arcade
+   video games, originally manufactured by Atari in 1972. Pong is a two-player
+   table tennis sports game featuring simple two-dimensional graphics.
 
 >> A2: In a few sentences, how does the user interact with the program?
 >> What are the controls?  What should the user try to do?
+   Each player moves his or her paddle using the appropriate keyboard keys.
+   Player 1, whose paddle is on the left-hand side of the screen, moves his or
+   her paddle up by pressing and holding the A key and moves it down by
+   pressing and holding the Z key. Player 2, whose paddle is on the right-hand
+   side of the screen, moves his or her paddle up by pressing and holding the
+   K key and moves it down by pressing and holding the M key. Each player
+   should hit the ball to the other player's side by using his or her paddle.
+   During gameplay, the ball is hit in this way repeatedly back and forth.
+   A player earns a point when the other player fails to return the ball to
+   him or her. The goal of the game is to reach eleven points first.
+   
 
 ---- DATA STRUCTURES ----
 
@@ -66,6 +92,12 @@ not required by the question.
 >> perform its operations.  Don't focus on state managed within interrupt
 >> handlers; we will look at that later.  Rather, focus on state that is
 >> part of the game implementation itself.
+   The game itself is stored in a global variable named 'game', which is of
+   type Game. Game contains the information associated with the current state
+   of the game, including the information associated with the current state of
+   each player, the information associated with the current state of the ball,
+   and indicators as to whether the round is over and whether the game is over.
+   
 
 ---- SYNCHRONIZATION ----
 
@@ -75,9 +107,23 @@ not required by the question.
 >> of operations or updates that is performed within your program?
 >> Similarly, when a keyboard interrupt occurs, what does your program do
 >> in response?
+   When a timer interrupt occurs, the execution of the program is halted, and
+   a jump to the assembly function 'irq0_handler' is made. The function calls
+   the C function 'timer_handler', which does timer interrupt handling at the
+   program level. The function simply increments the static 'time_ticks'
+   variable that keeps time for the program. When a keyboard
+   interrupt occurs, the execution of the program is halted, and a
+   jump to the assembly function 'irq1_handler' is made. The function calls
+   the C function 'keyboard_handler', which does keyboard interrupt handling
+   at the program level. The function simply updates the boolean static
+   variable that corresponds to the key that caused the interrupt so that
+   the variables accurately indicate whether the key is currently depressed.
 
 >> A5: Would you say your program relies on polling or busy-waiting anywhere
 >> to accomplish its tasks?  If so, what tasks?
+   Yes, our program relies on busy-waiting to accomplish its tasks. The
+   timer uses busy-waiting for performing sleeping in the sleeping functions.
+   
 
 ---- RATIONALE ----
 
