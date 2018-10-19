@@ -122,23 +122,33 @@ not required by the question.
 >> A5: Would you say your program relies on polling or busy-waiting anywhere
 >> to accomplish its tasks?  If so, what tasks?
    Yes, our program relies on busy-waiting to accomplish its tasks. The
-   timer uses busy-waiting for performing sleeping in the sleeping functions.
+   timer uses busy-waiting for performing sleeping in the sleeping function.
    
 
 ---- RATIONALE ----
 
 >> A6: Why did you choose the project you did?
+   We chose the project we did because Pong is a classic arcade game that
+   generations of arcade enthusiasts have played. Furthermore, Pong is a game
+   that is simple for players of all ages to pick up, yet interesting enough
+   to not be boring.
 
 >> A7: Did your choice of project affect any of the specific implementation
 >> details of the various subsystems that you needed to use?  (For example,
 >> if you implemented a scrolling game, did you implement specialized high-
 >> performance video code to scroll the screen?)
+   Choosing Pong for our project meant that our game only needs to respond to
+   four keys on the keyboard: the A, Z, M, and K keys. For this reason, our
+   game uses static boolean variables to keep track of what keys are currently
+   depressed rather than a circular queue.
 
 >> A8: Did you run into any technical or resource limitations in the
 >> implementation of your program?  (For example, bootloader didn't fit,
 >> or a really useful standard library wasn't available, or you couldn't
 >> achieve the desired performance level, etc.)  If so, what steps did you
 >> take to try to overcome those limitations?
+   We did not run into any technical or resource limitations in the
+   implementation of our program.
 
                  BOOT SECTOR
                  ===========
@@ -148,13 +158,19 @@ not required by the question.
 >> B1: How did you decide to store the Disk Address Packet?  Does the
 >> memory occupied by the DAP get reclaimed after it is used?  If not,
 >> why not?
+   We decided to store the DAP on the stack. The memory occupied by the DAP
+   gets reclaimed after it is used.
 
 >> B2: How many sectors does your bootloader load?  How did you arrive
 >> at this number?  Briefly explain your rationale.
+   Our bootloader loads 20 sectors. We arrived at this number because it is
+   the minimum number of sectors that are needed to contain the program.bin
+   file.
 
 >> B3: Does your bootloader pass any information to the main program?
 >> (If not, just say no.)  If so, what information is passed, and how
 >> is it passed?
+   No, our bootloader does not pass any information to the main program.
 
 ---- ALGORITHMS ----
 
