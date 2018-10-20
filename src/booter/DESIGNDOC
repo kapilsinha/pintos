@@ -169,7 +169,7 @@ not required by the question.
    Our bootloader loads 20 sectors. We arrived at this number because it is
    the minimum number of sectors that are needed to contain the program.bin
    file - which is over 5 KB; hence we needed at least 10 sectors and loaded
-   20 for good measure. 
+   20 for good measure.
 
 >> B3: Does your bootloader pass any information to the main program?
 >> (If not, just say no.)  If so, what information is passed, and how
@@ -302,7 +302,7 @@ The keyboard code provides multiple is_<key>_pressed() functions to check if
 No, the keyboard subsystem does not expose scan-codes directly to our main
 program. It preprocesses the scan codes and then sets the appropriate boolean
 variable for that key to 0 or 1 as per the code read. The main program then
-uses a function to get the value of this boolean variable. 
+uses a function to get the value of this boolean variable.
 
 ---- SYNCHRONIZATION ----
 
@@ -310,17 +310,23 @@ uses a function to get the value of this boolean variable.
 >> potential for race conditions in updating the keyboard subsystem's
 >> internal state?  If so, what steps did you take to ensure that such
 >> situations cannot occur?
+No, there should not be any race conditions when updating the keyboard
+subsystem's internal state.
 
 >> E6: Given how your program handles keyboard events, is there any
 >> potential for keyboard interrupts to generate race conditions in updating
 >> your program's global state?  If so, what steps did you take to ensure
 >> that such situations cannot occur?
 
+
 ---- RATIONALE ----
 
 >> E7: Why did you choose the design and data representation that your
 >> keyboard subsystem uses?  How is it suited to your program's overall
 >> operation?
+We chose this representation because it was very simple and straightforward
+to implement and served our purposes well. 
+
 
               SURVEY QUESTIONS
               ================
