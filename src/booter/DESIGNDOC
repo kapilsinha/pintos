@@ -311,13 +311,20 @@ uses a function to get the value of this boolean variable.
 >> internal state?  If so, what steps did you take to ensure that such
 >> situations cannot occur?
 No, there should not be any race conditions when updating the keyboard
-subsystem's internal state.
+subsystem's internal state because as soon as there is a keyboard interrupt,
+our code updates the corresponding boolean variable for that key. Since we are
+still servicing the interrupt, we will not receive more interrupts and thus
+we should never have a race condition.
 
 >> E6: Given how your program handles keyboard events, is there any
 >> potential for keyboard interrupts to generate race conditions in updating
 >> your program's global state?  If so, what steps did you take to ensure
 >> that such situations cannot occur?
-
+No, there should not be any race conditions when updating the program's global
+state. This is because the program simply calls wrapper functions which
+return whether a key is pressed or not. Since the keyboard interrupt handler
+never has any race conditions, the keyboard events should not have any race
+conditions either.
 
 ---- RATIONALE ----
 
@@ -325,7 +332,7 @@ subsystem's internal state.
 >> keyboard subsystem uses?  How is it suited to your program's overall
 >> operation?
 We chose this representation because it was very simple and straightforward
-to implement and served our purposes well. 
+to implement and served our purposes well.
 
 
               SURVEY QUESTIONS
