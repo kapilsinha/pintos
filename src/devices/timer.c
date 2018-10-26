@@ -87,8 +87,7 @@ void timer_sleep(int64_t ticks) {
     ASSERT(intr_get_level() == INTR_ON);
 
     // Check if argument is greater than 0
-    if (ticks < 0) {
-        printf("Cannot sleep for negative ticks.\n");
+    if (ticks <= 0) {
         return;
     }
     // Turn off interrupts for call to block
