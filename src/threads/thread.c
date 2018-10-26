@@ -128,6 +128,9 @@ void thread_tick(void) {
     /* Enforce preemption. */
     if (++thread_ticks >= TIME_SLICE)
         intr_yield_on_return();
+
+    // Call decrement sleep for each thread and wake if needed
+    thread_foreach(&thread_desleep, NULL);
 }
 
 /*! Prints thread statistics. */
@@ -223,14 +226,14 @@ void thread_unblock(struct thread *t) {
 }
 
 /*! Returns the name of the running thread. */
-const char * thread_name(void) {
+const char *thread_name(void) {
     return thread_current()->name;
 }
 
 /*! Returns the running thread.
     This is running_thread() plus a couple of sanity checks.
     See the big comment at the top of thread.h for details. */
-struct thread * thread_current(void) {
+struct thread *thread_current(void) {
     struct thread *t = running_thread();
 
     /* Make sure T is really a thread.
@@ -277,11 +280,23 @@ void thread_yield(void) {
     ASSERT(!intr_context());
 
     old_level = intr_disable();
-    if (cur != idle_thread) 
+    if (cur != idle_thread)
         list_push_back(&ready_list, &cur->elem);
     cur->status = THREAD_READY;
     schedule();
     intr_set_level(old_level);
+}
+
+/*! This function is called by thread_tick for each thread. It decrements the
+    number of ticks this thread needs to sleep for. If the value is decremented
+    to 0, then it wakes the thread. */
+void thread_desleep(struct thread *t, void *aux) {
+    ASSERT(t->sleep >= 0) // The sleep value should never be negative
+    if (t->sleep > 0) {// Decrement the amount to sleep
+        if (--t->sleep == 0) {// Rise and shine sunshine
+            thread_unblock(t);
+        }
+    }
 }
 
 /*! Invoke function 'func' on all threads, passing along 'aux'.
@@ -301,6 +316,10 @@ void thread_foreach(thread_action_func *func, void *aux) {
 /*! Sets the current thread's priority to NEW_PRIORITY. */
 void thread_set_priority(int new_priority) {
     thread_current()->priority = new_priority;
+    /* TODO: If the thread was not running and its priority is raised, need to
+        check if it is now the highest priority thread.
+        If the priority was lowered and the thread was running, need to check
+        if there is now a thread with a higher priority and run that. */
 }
 
 /*! Returns the current thread's priority. */
@@ -373,7 +392,7 @@ static void kernel_thread(thread_func *function, void *aux) {
 }
 
 /*! Returns the running thread. */
-struct thread * running_thread(void) {
+struct thread *running_thread(void) {
     uint32_t *esp;
 
     /* Copy the CPU's stack pointer into `esp', and then round that
@@ -403,6 +422,8 @@ static void init_thread(struct thread *t, const char *name, int priority) {
     t->stack = (uint8_t *) t + PGSIZE;
     t->priority = priority;
     t->magic = THREAD_MAGIC;
+    // Set sleep to 0 initially
+    t->sleep = 0;
 
     old_level = intr_disable();
     list_push_back(&all_list, &t->allelem);
@@ -411,7 +432,7 @@ static void init_thread(struct thread *t, const char *name, int priority) {
 
 /*! Allocates a SIZE-byte frame at the top of thread T's stack and
     returns a pointer to the frame's base. */
-static void * alloc_frame(struct thread *t, size_t size) {
+static void *alloc_frame(struct thread *t, size_t size) {
     /* Stack data is always allocated in word-size units. */
     ASSERT(is_thread(t));
     ASSERT(size % sizeof(uint32_t) == 0);
@@ -424,7 +445,7 @@ static void * alloc_frame(struct thread *t, size_t size) {
     thread from the run queue, unless the run queue is empty.  (If the running
     thread can continue running, then it will be in the run queue.)  If the
     run queue is empty, return idle_thread. */
-static struct thread * next_thread_to_run(void) {
+static struct thread *next_thread_to_run(void) {
     if (list_empty(&ready_list))
       return idle_thread;
     else
@@ -447,7 +468,7 @@ static struct thread * next_thread_to_run(void) {
    After this function and its caller returns, the thread switch is complete. */
 void thread_schedule_tail(struct thread *prev) {
     struct thread *cur = running_thread();
-  
+
     ASSERT(intr_get_level() == INTR_OFF);
 
     /* Mark us as running. */
@@ -507,4 +528,3 @@ static tid_t allocate_tid(void) {
 /*! Offset of `stack' member within `struct thread'.
     Used by switch.S, which can't figure it out on its own. */
 uint32_t thread_stack_ofs = offsetof(struct thread, stack);
-
