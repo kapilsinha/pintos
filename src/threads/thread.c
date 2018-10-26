@@ -70,6 +70,19 @@ static void schedule(void);
 void thread_schedule_tail(struct thread *prev);
 static tid_t allocate_tid(void);
 
+
+/*
+ * Follows the type declaration for list_less_func in <list.h>.
+ * a and b correspond to pointers to thread->elem
+ * Returns True if thread a's priority < thread b's priority and False otherwise
+ * This comparator is useful for scheduling in locks and semaphores
+ */
+bool list_less_priority_thread
+    (const struct list_elem *a, const struct list_elem *b, void *aux UNUSED) {
+    return list_entry(a, struct thread, elem)->priority <
+        list_entry(b, struct thread, elem)->priority;
+}
+
 /*! Initializes the threading system by transforming the code
     that's currently running into a thread.  This can't work in
     general and it is possible in this case only because loader.S
@@ -187,6 +200,9 @@ tid_t thread_create(const char *name, int priority, thread_func *function,
     /* Add to run queue. */
     thread_unblock(t);
 
+    /* Run thread if it is the highest priority thread */
+    thread_yield();
+
     return tid;
 }
 
@@ -301,6 +317,9 @@ void thread_foreach(thread_action_func *func, void *aux) {
 /*! Sets the current thread's priority to NEW_PRIORITY. */
 void thread_set_priority(int new_priority) {
     thread_current()->priority = new_priority;
+    // Force the current thread to yield if it is no longer the highest
+    // priority of all the threads on the ready queue
+    thread_yield();
 }
 
 /*! Returns the current thread's priority. */
@@ -330,7 +349,7 @@ int thread_get_recent_cpu(void) {
     /* Not yet implemented. */
     return 0;
 }
-
+
 /*! Idle thread.  Executes when no other thread is ready to run.
 
     The idle thread is initially put on the ready list by thread_start().
@@ -425,10 +444,13 @@ static void * alloc_frame(struct thread *t, size_t size) {
     thread can continue running, then it will be in the run queue.)  If the
     run queue is empty, return idle_thread. */
 static struct thread * next_thread_to_run(void) {
-    if (list_empty(&ready_list))
-      return idle_thread;
-    else
-      return list_entry(list_pop_front(&ready_list), struct thread, elem);
+    if (list_empty(&ready_list)) {
+        return idle_thread;
+    }
+    struct list_elem *max_priority_thread =
+        list_max(&ready_list, &list_less_priority_thread, NULL);
+    list_remove(max_priority_thread);
+    return list_entry(max_priority_thread, struct thread, elem);
 }
 
 /*! Completes a thread switch by activating the new thread's page tables, and,

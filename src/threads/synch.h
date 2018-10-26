@@ -10,9 +10,15 @@
 #include <list.h>
 #include <stdbool.h>
 
+// General functions
+bool list_less_priority_condition
+    (const struct list_elem *a, const struct list_elem *b, void *aux);
+
 /*! A counting semaphore. */
 struct semaphore {
     unsigned value;             /*!< Current value. */
+    // each element in waiters is a pointer to thread->elem
+    // (thread defined in thread.h)
     struct list waiters;        /*!< List of waiting threads. */
 };
 
@@ -36,7 +42,16 @@ bool lock_held_by_current_thread(const struct lock *);
 
 /*! Condition variable. */
 struct condition {
+    // Each element in waiters is a pointer to semaphore_elem->elem
+    // (semaphore_elem defined in synch.c - contains elem and semaphore)
+    // This semaphore contains a pointer to a single thread 
     struct list waiters;        /*!< List of waiting threads. */
+};
+
+/*! One semaphore in a list. */
+struct semaphore_elem {
+    struct list_elem elem;              /*!< List element. */
+    struct semaphore semaphore;         /*!< This semaphore. */
 };
 
 void cond_init(struct condition *);

@@ -123,6 +123,10 @@ struct thread {
     Controlled by kernel command-line option "-o mlfqs". */
 extern bool thread_mlfqs;
 
+// General functions
+bool list_less_priority_thread
+    (const struct list_elem *a, const struct list_elem *b, void *aux);
+
 void thread_init(void);
 void thread_start(void);
 
