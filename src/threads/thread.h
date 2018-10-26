@@ -97,6 +97,7 @@ struct thread {
     char name[16];                      /*!< Name (for debugging purposes). */
     uint8_t *stack;                     /*!< Saved stack pointer. */
     int priority;                       /*!< Priority. */
+    int64_t sleep;                      /*!< How long to sleep for. */
     struct list_elem allelem;           /*!< List element for all threads list. */
     /**@}*/
 
@@ -139,7 +140,7 @@ tid_t thread_create(const char *name, int priority, thread_func *, void *);
 void thread_block(void);
 void thread_unblock(struct thread *);
 
-struct thread *thread_current (void);
+struct thread *thread_current(void);
 tid_t thread_tid(void);
 const char *thread_name(void);
 
@@ -148,6 +149,10 @@ void thread_yield(void);
 
 /*! Performs some operation on thread t, given auxiliary data AUX. */
 typedef void thread_action_func(struct thread *t, void *aux);
+
+/*! Functions to be performed for each thread. */
+// Called by thread_tick to decrement sleep time for each thread
+void thread_desleep(struct thread *t, void *aux);
 
 void thread_foreach(thread_action_func *, void *);
 
@@ -160,4 +165,3 @@ int thread_get_recent_cpu(void);
 int thread_get_load_avg(void);
 
 #endif /* threads/thread.h */
-
