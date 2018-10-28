@@ -97,8 +97,10 @@ struct thread {
     char name[16];                      /*!< Name (for debugging purposes). */
     uint8_t *stack;                     /*!< Saved stack pointer. */
     int priority;                       /*!< Priority. */
+    int og_priority;                    /*!< Original priority of thread. */
     int64_t sleep;                      /*!< How long to sleep for. */
     struct list_elem allelem;           /*!< List element for all threads list. */
+    struct list locks_held;             /*!< List of all locks held by thread. */
     /**@}*/
 
     /*! Shared between thread.c and synch.c. */
