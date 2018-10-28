@@ -436,9 +436,13 @@ static void init_thread(struct thread *t, const char *name, int priority) {
     strlcpy(t->name, name, sizeof t->name);
     t->stack = (uint8_t *) t + PGSIZE;
     t->priority = priority;
+    // Set OG priority as well
+    t->og_priority = priority;
     t->magic = THREAD_MAGIC;
     // Set sleep to 0 initially
     t->sleep = 0;
+    // Initialize the list of locks
+    list_init(&t->locks_held);
 
     old_level = intr_disable();
     list_push_back(&all_list, &t->allelem);
