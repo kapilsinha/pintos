@@ -111,6 +111,7 @@ bool is_interior (struct list_elem *elem)
 {
   return elem != NULL && elem->prev != NULL && elem->next != NULL;
 }
+
 void sema_down(struct semaphore *sema) {
     enum intr_level old_level;
 
@@ -119,10 +120,6 @@ void sema_down(struct semaphore *sema) {
 
     old_level = intr_disable();
     while (sema->value == 0) {
-        // The thread should not already be on the waiting list for this lock
-        if (is_interior(&thread_current()->elem)) {
-            list_remove(&thread_current()->elem);
-        }
         list_push_back(&sema->waiters, &thread_current()->elem);
         thread_block();
     }
@@ -168,8 +165,8 @@ void sema_up(struct semaphore *sema) {
     // to the pointer to the structure that contains list_elem
     int size = list_size(&sema->waiters);
     if (!list_empty(&sema->waiters)) {
-        // Choose the thread with max priority among those waiting on the
-        // semaphore and unblock that one
+        // Choose the thread with max priority waiting and unblock
+        int size = list_size(&sema->waiters);
         struct list_elem *max_priority_thread =
             list_max(&sema->waiters, &list_less_priority_thread, NULL);
         list_remove(max_priority_thread);
@@ -258,17 +255,22 @@ void lock_acquire(struct lock *lock) {
         list_push_back(&thread_current()->locks_held, &lock->thread_elem);
     }
     else {
-        /* Add this thread to the waiting list. */
-        list_push_back(&lock->semaphore.waiters, &thread_current()->elem);
         /* Set lock priority using the threads that are waiting for this lock. */
-        // Get highest priority thread waiting
-        struct thread *max_thread = list_entry(list_max(&lock->semaphore.waiters,
-            &list_less_priority_thread, NULL), struct thread, elem);
-        // Set lock to this highest priority
-        lock->priority = max_thread->priority;
-        // Set the priority of the thread holding the lock to max of its and lock
-        lock->holder->priority = lock->priority > lock->holder->priority
+        struct list_elem *max_el = list_max(&lock->semaphore.waiters,
+            &list_less_priority_thread, NULL);
+        /* Check if the list is empty. */
+        if (max_el == &lock->semaphore.waiters.tail) {
+            printf("empty\n");
+            lock->priority = thread_current()->priority;
+        }
+        else {
+            struct thread *max_thread = list_entry(max_el, struct thread, elem);
+            // Set lock to this highest priority
+            lock->priority = max_thread->priority;
+            // Set the priority of the thread holding the lock to max of its and lock
+            lock->holder->priority = lock->priority > lock->holder->priority
             ? lock->priority : lock->holder->priority;
+        }
         // Wait for the lock
         sema_down(&lock->semaphore);
         // Since we now have the lock, add to list of locks held
@@ -311,7 +313,6 @@ void lock_release(struct lock *lock) {
 
     /* Change the priority of the lock based on threads waiting. */
     // TODO
-
 
     lock->holder = NULL;
     sema_up(&lock->semaphore);

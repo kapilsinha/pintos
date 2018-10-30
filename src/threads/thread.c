@@ -306,7 +306,7 @@ void thread_yield(void) {
 /*! This function is called by thread_tick for each thread. It decrements the
     number of ticks this thread needs to sleep for. If the value is decremented
     to 0, then it wakes the thread. */
-void thread_desleep(struct thread *t, void *aux) {
+void thread_desleep(struct thread *t, void *aux UNUSED) {
     ASSERT(t->sleep >= 0) // The sleep value should never be negative
     if (t->sleep > 0) {// Decrement the amount to sleep
         if (--t->sleep == 0) {// Rise and shine sunshine
