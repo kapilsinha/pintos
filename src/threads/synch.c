@@ -225,19 +225,24 @@ void lock_acquire(struct lock *lock) {
     }
     else {
         /* Set lock priority using the threads that are waiting for this lock. */
-        // Get highest priority thread waiting
-        struct thread *max_thread = list_entry(list_max(&lock->semaphore.waiters,
-            &list_less_priority_thread, NULL), struct thread, elem);
-        // Set lock to this highest priority
-        lock->priority = max_thread->priority;
+        if (list_empty(&lock->semaphore.waiters)) {
+            lock->priority = thread_get_priority();
+        }
+        else {
+            struct thread *max_thread = list_entry(list_max(&lock->semaphore.waiters,
+                &list_less_priority_thread, NULL), struct thread, elem);
+                // Set lock to either max of threads waiting or this thread
+                lock->priority = max_thread->priority > thread_get_priority()
+                    ? max_thread->priority : thread_get_priority();
+        }
         // Set the priority of the thread holding the lock to max of its and lock
         lock->holder->priority = lock->priority > lock->holder->priority
             ? lock->priority : lock->holder->priority;
         // Wait for the lock
         sema_down(&lock->semaphore);
         // Since we now have the lock, add to list of locks held
-        lock->holder = thread_current();
         list_push_back(&thread_current()->locks_held, &lock->thread_elem);
+        lock->holder = thread_current();
     }
     /* Back to old interrupts level. */
     intr_set_level(old_level);
@@ -275,7 +280,6 @@ void lock_release(struct lock *lock) {
     thread_set_priority(thread_current()->og_priority);
     /* Remove this lock from list of locks acquired by this thread. */
     list_remove(&lock->thread_elem);
-
 
     lock->holder = NULL;
     sema_up(&lock->semaphore);
