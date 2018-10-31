@@ -342,6 +342,11 @@ int thread_get_priority(void) {
     return thread_current()->priority;
 }
 
+/*! Returns the current thread's priority. */
+int thread_get_og_priority(void) {
+    return thread_current()->og_priority;
+}
+
 /*! Sets the current thread's nice value to NICE. */
 void thread_set_nice(int nice UNUSED) {
     /* Not yet implemented. */

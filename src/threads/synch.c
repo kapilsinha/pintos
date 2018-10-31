@@ -67,8 +67,6 @@ bool list_less_priority_condition
  */
 bool list_less_priority_lock
     (const struct list_elem *a, const struct list_elem *b, void *aux UNUSED) {
-    // The below is equivalent to
-    // return list_less_priority_lock(thread_a, thread_b, NULL)
     return list_entry(a, struct lock, thread_elem)->priority <
         list_entry(b, struct lock, thread_elem)->priority;
 }
@@ -234,33 +232,32 @@ void lock_acquire(struct lock *lock) {
     /* Check if this thread can acquire the lock. */
     bool lockable = sema_try_down(&lock->semaphore);
     if (lockable) {// If the lock can be acquired just take it
-        lock->holder = thread_current();
-        // Add to list of locks held by this thread
-        list_push_back(&thread_current()->locks_held, &lock->thread_elem);
-        // Since nobody was waiting, set priority to this thread
         lock->priority = thread_get_priority();
     }
     else {
         /* Set lock priority using the threads that are waiting for this lock. */
         if (list_empty(&lock->semaphore.waiters)) {
+            // Since nobody was waiting, set priority to this thread
             lock->priority = thread_get_priority();
         }
         else {
-            struct thread *max_thread = list_entry(list_max(&lock->semaphore.waiters,
-                &list_less_priority_thread, NULL), struct thread, elem);
-                // Set lock to either max of threads waiting or this thread
-                lock->priority = max_thread->priority > thread_get_priority()
-                    ? max_thread->priority : thread_get_priority();
+            struct thread *max_thread
+                = list_entry(list_max(&lock->semaphore.waiters,
+                  &list_less_priority_thread, NULL), struct thread, elem);
+            // Set lock to either max of threads waiting or this thread
+            lock->priority = max_thread->priority > thread_get_priority()
+                ? max_thread->priority : thread_get_priority();
         }
         // Set the priority of the thread holding the lock to max of its and lock
         lock->holder->priority = lock->priority > lock->holder->priority
             ? lock->priority : lock->holder->priority;
         // Wait for the lock
         sema_down(&lock->semaphore);
-        // Since we now have the lock, add to list of locks held
-        list_push_back(&thread_current()->locks_held, &lock->thread_elem);
-        lock->holder = thread_current();
     }
+    lock->holder = thread_current();
+    // We now have the lock so add to list of locks held by this thread
+    list_push_back(&thread_current()->locks_held, &lock->thread_elem);
+
     /* Back to old interrupts level. */
     intr_set_level(old_level);
 }
@@ -291,21 +288,28 @@ bool lock_try_acquire(struct lock *lock) {
     make sense to try to release a lock within an interrupt
     handler. */
 void lock_release(struct lock *lock) {
+    ASSERT(lock != NULL);
+    ASSERT(lock_held_by_current_thread(lock));
+
     // Disable interrupts
     enum intr_level old_level;
     old_level = intr_disable();
-    ASSERT(lock != NULL);
-    ASSERT(lock_held_by_current_thread(lock));
 
     /* Remove this lock from list of locks acquired by this thread. */
     list_remove(&lock->thread_elem);
 
     if (!list_empty(&thread_current()->locks_held)) {
         /* Loop over all locks that this thread is holding and set to max. */
-        struct lock *max_lock = list_entry(list_max(&thread_current()->locks_held,
-        &list_less_priority_lock, NULL), struct lock, thread_elem);
+        struct lock *max_lock
+            = list_entry(list_max(&thread_current()->locks_held,
+              &list_less_priority_lock, NULL), struct lock, thread_elem);
         thread_set_priority(max_lock->priority);
-        //thread_set_priority(thread_current()->og_priority);
+        // ^^TODO: SET TO MAX OF LOCK PRIORITY AND OG PRIORITY??
+        /*
+        int new_priority = max_lock->priority > thread_get_og_priority()
+            ? max_lock->priority : thread_get_og_priority();
+        thread_set_priority(new_priority);
+        */
     }
     else { // This thread is not holding any more locks
         thread_set_priority(thread_current()->og_priority);
