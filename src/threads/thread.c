@@ -329,8 +329,24 @@ void thread_foreach(thread_action_func *func, void *aux) {
     }
 }
 
-/*! Sets the current thread's priority to NEW_PRIORITY. */
+/*! Print the ready list - for debugging */
+void print_ready_list(void) {
+    struct list_elem *e;
+
+    for (e = list_begin(&ready_list); e != list_end(&ready_list);
+         e = list_next(e)) {
+        struct thread *t = list_entry(e, struct thread, elem);
+        printf("tid %d, name %s, priority %d\n", t->tid, t->name, t->priority);
+    }
+}
+
+/*! Sets the current thread's priority and og_priority to NEW_PRIORITY.
+ * We never call this function internally, since it modifies og_priority;
+ * this function should only be called by the test functions, since only
+ * it should change a thread's og_priority after the thread has been created
+ */
 void thread_set_priority(int new_priority) {
+    thread_current()->og_priority = new_priority;
     thread_current()->priority = new_priority;
     // Force the current thread to yield if it is no longer the highest
     // priority of all the threads on the ready queue

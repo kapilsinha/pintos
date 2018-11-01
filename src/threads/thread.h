@@ -158,6 +158,7 @@ typedef void thread_action_func(struct thread *t, void *aux);
 void thread_desleep(struct thread *t, void *aux);
 
 void thread_foreach(thread_action_func *, void *);
+void print_ready_list(void);
 
 int thread_get_og_priority(void);
 

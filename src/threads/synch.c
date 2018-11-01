@@ -225,12 +225,13 @@ void lock_acquire(struct lock *lock) {
     ASSERT(lock != NULL);
     ASSERT(!intr_context());
     ASSERT(!lock_held_by_current_thread(lock));
+
     // Disable interrupts
     enum intr_level old_level;
     old_level = intr_disable();
-    /* Need to check instead of actually calling sema_down because we don't
-        want to block the thread before we're done. */
-    /* Check if this thread can acquire the lock. */
+    // Need to check instead of actually calling sema_down because we don't
+    // want to block the thread before we're done.
+    // Check if this thread can acquire the lock.
     bool lockable = sema_try_down(&lock->semaphore);
     if (lockable) {// If the lock can be acquired just take it
         ASSERT(list_empty(&lock->semaphore.waiters));
@@ -307,9 +308,11 @@ void lock_acquire(struct lock *lock) {
     // waiters, but it's here just to be safe
     int new_priority = max_lock->priority > thread_get_priority()
         ? max_lock->priority : thread_get_priority();
-    thread_set_priority(new_priority);
+    // NOTE: Never call thread_set_priority
+    // because that function sets og_priority and priority
+    thread_current()->priority = new_priority;
 
-    /* Back to old interrupts level. */
+    // Back to old interrupts level.
     intr_set_level(old_level);
 }
 
@@ -346,24 +349,22 @@ void lock_release(struct lock *lock) {
     enum intr_level old_level;
     old_level = intr_disable();
 
-    /* Remove this lock from list of locks acquired by this thread. */
+    // Remove this lock from list of locks acquired by this thread.
     list_remove(&lock->thread_elem);
 
     if (!list_empty(&thread_current()->locks_held)) {
-        /* Loop over all locks that this thread is holding and set to max. */
+        // Loop over all locks that this thread is holding and set to max.
         struct lock *max_lock
             = list_entry(list_max(&thread_current()->locks_held,
               &list_less_priority_lock, NULL), struct lock, thread_elem);
-        // thread_set_priority(max_lock->priority);
-        // ^^ Commented out: set thread priority to max of lock priority and
-        // current thread priority
         int new_priority = max_lock->priority > thread_get_og_priority()
             ? max_lock->priority : thread_get_og_priority();
-        thread_set_priority(new_priority);
+        thread_current()->priority = new_priority;
     }
     else { // This thread is not holding any more locks
-        thread_set_priority(thread_current()->og_priority);
-        // thread_set_priority(thread_get_og_priority());
+        // NOTE: Never call thread_set_priority
+        // because that function sets og_priority and priority
+        thread_current()->priority = thread_get_og_priority();
     }
 
     lock->holder = NULL;
