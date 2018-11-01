@@ -97,8 +97,11 @@ struct thread {
     char name[16];                      /*!< Name (for debugging purposes). */
     uint8_t *stack;                     /*!< Saved stack pointer. */
     int priority;                       /*!< Priority. */
+    int og_priority;                    /*!< Original priority of thread. */
     int64_t sleep;                      /*!< How long to sleep for. */
     struct list_elem allelem;           /*!< List element for all threads list. */
+    struct list locks_held;             /*!< List of locks held by thread. */
+    struct lock *lock_waiting;          /*!< Lock that the thread is waiting for. */
     /**@}*/
 
     /*! Shared between thread.c and synch.c. */
@@ -155,6 +158,9 @@ typedef void thread_action_func(struct thread *t, void *aux);
 void thread_desleep(struct thread *t, void *aux);
 
 void thread_foreach(thread_action_func *, void *);
+void print_ready_list(void);
+
+int thread_get_og_priority(void);
 
 int thread_get_priority(void);
 void thread_set_priority(int);

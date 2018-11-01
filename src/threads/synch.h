@@ -13,7 +13,8 @@
 // General functions
 bool list_less_priority_condition
     (const struct list_elem *a, const struct list_elem *b, void *aux);
-
+bool list_less_priority_lock
+    (const struct list_elem *a, const struct list_elem *b, void *aux);
 /*! A counting semaphore. */
 struct semaphore {
     unsigned value;             /*!< Current value. */
@@ -32,6 +33,8 @@ void sema_self_test(void);
 struct lock {
     struct thread *holder;      /*!< Thread holding lock (for debugging). */
     struct semaphore semaphore; /*!< Binary semaphore controlling access. */
+    int priority;           /*!< Priority of highest thread that needs lock. */
+    struct list_elem thread_elem; /*!< List element for thread locks list. */
 };
 
 void lock_init(struct lock *);
@@ -44,7 +47,7 @@ bool lock_held_by_current_thread(const struct lock *);
 struct condition {
     // Each element in waiters is a pointer to semaphore_elem->elem
     // (semaphore_elem defined in synch.c - contains elem and semaphore)
-    // This semaphore contains a pointer to a single thread 
+    // This semaphore contains a pointer to a single thread
     struct list waiters;        /*!< List of waiting threads. */
 };
 
@@ -67,4 +70,3 @@ void cond_broadcast(struct condition *, struct lock *);
 #define barrier() asm volatile ("" : : : "memory")
 
 #endif /* threads/synch.h */
-
