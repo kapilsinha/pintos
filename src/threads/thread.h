@@ -100,7 +100,8 @@ struct thread {
     int og_priority;                    /*!< Original priority of thread. */
     int64_t sleep;                      /*!< How long to sleep for. */
     struct list_elem allelem;           /*!< List element for all threads list. */
-    struct list locks_held;             /*!< List of all locks held by thread. */
+    struct list locks_held;             /*!< List of locks held by thread. */
+    struct lock *lock_waiting;          /*!< Lock that the thread is waiting for. */
     /**@}*/
 
     /*! Shared between thread.c and synch.c. */

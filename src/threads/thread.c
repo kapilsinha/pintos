@@ -448,6 +448,7 @@ static void init_thread(struct thread *t, const char *name, int priority) {
     t->sleep = 0;
     // Initialize the list of locks
     list_init(&t->locks_held);
+    t->lock_waiting = NULL;
 
     old_level = intr_disable();
     list_push_back(&all_list, &t->allelem);

@@ -210,6 +210,7 @@ void lock_init(struct lock *lock) {
 
     lock->holder = NULL;
     sema_init(&lock->semaphore, 1);
+    lock->priority = PRI_MIN;
 }
 
 /*! Acquires LOCK, sleeping until it becomes available if
@@ -232,10 +233,14 @@ void lock_acquire(struct lock *lock) {
     /* Check if this thread can acquire the lock. */
     bool lockable = sema_try_down(&lock->semaphore);
     if (lockable) {// If the lock can be acquired just take it
-        lock->priority = thread_get_priority();
+        ASSERT(list_empty(&lock->semaphore.waiters));
+        // Commented out the below line - the lock priority is the max of
+        // priorities of the threads waiting on it, and right now it has no
+        // waiting threads, so it shouldn't have a priority, right?
+        // lock->priority = thread_get_priority();
     }
     else {
-        /* Set lock priority using the threads that are waiting for this lock. */
+        // Set lock priority using the threads that are waiting for this lock.
         if (list_empty(&lock->semaphore.waiters)) {
             // Since nobody was waiting, set priority to this thread
             lock->priority = thread_get_priority();
@@ -248,15 +253,61 @@ void lock_acquire(struct lock *lock) {
             lock->priority = max_thread->priority > thread_get_priority()
                 ? max_thread->priority : thread_get_priority();
         }
-        // Set the priority of the thread holding the lock to max of its and lock
-        lock->holder->priority = lock->priority > lock->holder->priority
-            ? lock->priority : lock->holder->priority;
+        // Update priority of the thread holding the lock to max of its and lock's
+        // Recursively update priority of the thread holding a lock that
+        // the initial holder's needs, etc.
+        // Shouldn't really need a max recursion depth but we keep it for safety
+        int max_recursion = 8;
+        struct lock *cur_lock = lock;
+        for (int i = 0; i < max_recursion; i++) {
+            // Call the thread holding cur_lock thread_a
+            struct thread *thread_a = cur_lock->holder;
+            // Set priority of thread_a to max of its current priority
+            // and the priority of cur_lock
+            thread_a->priority = cur_lock->priority > thread_a->priority ?
+                  cur_lock->priority : thread_a->priority;
+            // Set priority of the lock that thread A is waiting for to max of
+            // its current priority and the priority of thread A
+            if (thread_a->lock_waiting == NULL) {
+                break;
+            }
+            thread_a->lock_waiting->priority
+                = thread_a->priority > thread_a->lock_waiting->priority ?
+                  thread_a->priority : thread_a->lock_waiting->priority;
+            cur_lock = thread_a->lock_waiting;
+        }
+        thread_current()->lock_waiting = lock;
         // Wait for the lock
         sema_down(&lock->semaphore);
     }
+    // We now have the lock
     lock->holder = thread_current();
-    // We now have the lock so add to list of locks held by this thread
+    thread_current()->lock_waiting = NULL;
+
+    // Update lock priority since current_thread is no longer waiting for it
+    // Can replace the below if statement by just putting the statements in
+    // the appropriate if/else statements above
+    if (list_empty(&lock->semaphore.waiters)) {
+        lock->priority = PRI_MIN;
+    }
+    else {
+        struct thread *max_thread
+            = list_entry(list_max(&lock->semaphore.waiters,
+              &list_less_priority_thread, NULL), struct thread, elem);
+        lock->priority = max_thread->priority;
+    }
+    
+    // Update thread's priority and list of locks with this additional lock
     list_push_back(&thread_current()->locks_held, &lock->thread_elem);
+    struct lock *max_lock
+        = list_entry(list_max(&thread_current()->locks_held,
+          &list_less_priority_lock, NULL), struct lock, thread_elem);
+    // Don't think the thread's priority should ever be updated since we got
+    // here only because the thread had the highest priority out of the lock's
+    // waiters, but it's here just to be safe
+    int new_priority = max_lock->priority > thread_get_priority()
+        ? max_lock->priority : thread_get_priority();
+    thread_set_priority(new_priority);
 
     /* Back to old interrupts level. */
     intr_set_level(old_level);
@@ -303,16 +354,16 @@ void lock_release(struct lock *lock) {
         struct lock *max_lock
             = list_entry(list_max(&thread_current()->locks_held,
               &list_less_priority_lock, NULL), struct lock, thread_elem);
-        thread_set_priority(max_lock->priority);
-        // ^^TODO: SET TO MAX OF LOCK PRIORITY AND OG PRIORITY??
-        /*
+        // thread_set_priority(max_lock->priority);
+        // ^^ Commented out: set thread priority to max of lock priority and
+        // current thread priority
         int new_priority = max_lock->priority > thread_get_og_priority()
             ? max_lock->priority : thread_get_og_priority();
         thread_set_priority(new_priority);
-        */
     }
     else { // This thread is not holding any more locks
         thread_set_priority(thread_current()->og_priority);
+        // thread_set_priority(thread_get_og_priority());
     }
 
     lock->holder = NULL;
