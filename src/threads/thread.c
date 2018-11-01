@@ -347,7 +347,16 @@ void print_ready_list(void) {
  */
 void thread_set_priority(int new_priority) {
     thread_current()->og_priority = new_priority;
-    thread_current()->priority = new_priority;
+    // Only update current priority if the new_priority is higher than the
+    // priorities of all the locks that the thread possesses (otherwise
+    // (a thread should not be able to lower its priority until a priority
+    // donation is released
+    struct lock *max_lock
+        = list_entry(list_max(&thread_current()->locks_held,
+          &list_less_priority_lock, NULL), struct lock, thread_elem);
+    if (new_priority > max_lock->priority) {
+        thread_current()->priority = new_priority;
+    }
     // Force the current thread to yield if it is no longer the highest
     // priority of all the threads on the ready queue
     thread_yield();

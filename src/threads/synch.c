@@ -235,10 +235,9 @@ void lock_acquire(struct lock *lock) {
     bool lockable = sema_try_down(&lock->semaphore);
     if (lockable) {// If the lock can be acquired just take it
         ASSERT(list_empty(&lock->semaphore.waiters));
-        // Commented out the below line - the lock priority is the max of
-        // priorities of the threads waiting on it, and right now it has no
-        // waiting threads, so it shouldn't have a priority, right?
-        // lock->priority = thread_get_priority();
+        // The lock priority is the max of priorities of the threads waiting
+        // on it, and right now it has no waiting threads, so it shouldn't
+        // have a priority
     }
     else {
         // Set lock priority using the threads that are waiting for this lock.
