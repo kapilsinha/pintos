@@ -12,14 +12,14 @@ Karthik Nair <knair@caltech.edu>
 Kapil Sinha <ksinha@caltech.edu>
 Joseph Tilahun <jtilahun@caltech.edu>
 
->> Specify how many late tokens you are using on this assignment:
+>> Specify how many late tokens you are using on this assignment: 0
 
 >> What is the Git repository and commit hash for your submission?
    (You only need to include the commit-hash in the file you submit
    on Moodle.)
 
-   Repository URL:
-   commit ...
+   Repository URL: https://github.com/kapilsinha/pintos
+   commit: eb2d7a402cf4c15fe21b47cb199cfa2801ae020a
 
 ---- PRELIMINARIES ----
 
@@ -41,9 +41,19 @@ which parts.
 
 >> L1: How many hours did each team member spend on this assignment?
    Make sure that each member's total time is listed.
+   Karthik  20 h
+   Kapil    20 h
+   Joseph   18 h
 
 >> L2: What did each team member focus on for this assignment?  Keep
    descriptions to 25-30 words or less.
+   Kapil focused on the priority scheduling. He also made fixes to the
+   priority donation, which Karthik first implemented. Karthik focused
+   on working on the alarm clock as well as priority donation. He also
+   made fixes to the computations that are performed in the advanced
+   scheduler, which Joseph first implemented. Joseph focused on the
+   computations that are used in the advanced scheduler. He also
+   implemented the fixed-point arithmetic that is used in the kernel. 
 
 			     ALARM CLOCK
 			     ===========
@@ -53,27 +63,88 @@ which parts.
 >> A1: Copy here the declaration of each new or changed `struct' or
 >> `struct' member, global or static variable, `typedef', or
 >> enumeration.  Identify the purpose of each in 25 words or less.
+    int64_t sleep;                      /*!< How long to sleep for. */ 
+   This member of the `thread' struct stores the number of ticks for
+   which the thread needs to sleep.
 
 ---- ALGORITHMS ----
 
 >> A2: Briefly describe what happens in a call to timer_sleep(),
 >> including the effects of the timer interrupt handler.
+   In a call to timer_sleep(), if the number of ticks is not positive,
+   then the function returns immediately. After this, the first
+   operation that is performed is that interrupts are disabled. The
+   `sleep' member of the `thread' struct of the current thread is
+   first incremented by the number of ticks. The current thread is
+   then blocked using a called to thread_block(). The final operation
+   that is performed is that interrupts are reenabled back to the
+   original interrupt level.
 
 >> A3: What steps are taken to minimize the amount of time spent in
 >> the timer interrupt handler?
+   To minimize the amount of time spent in the timer interrupt
+   handler, the only operations that are performed in
+   timer_interrupt() are that the `ticks' global variable is
+   incremented and that thread_tick() is called. In thread_tick(),
+   the update of the `load_avg', `recent_cpu', and `priority'
+   members of the `thread' struct of each thread in the `all_list'
+   thread queue can only occur if the multi-level feedback queue
+   scheduler is enabled. This way, the updates do not waste time if
+   the multi-level feedback queue scheduler is not enabled, since
+   the priority scheduler does not use any of these members of the
+   `thread' struct to make scheduling decisions. Furthermore, if
+   the multi-level feedback queue scheduler is enabled, only the
+   operations that are critical to computing the new values of the
+   appropriate members of the relevant `thread' structs are performed.
 
 ---- SYNCHRONIZATION ----
 
 >> A4: How are race conditions avoided when multiple threads call
 >> timer_sleep() simultaneously?
+   Only one thread can be running at any given time because the
+   Pintos kernel can only run on a single core. For this reason, it is
+   impossible for multiple threads to call timer_sleep() at exactly
+   the same time. Rather, what can happen is that one thread calls
+   timer_sleep(), is preempted by the CPU, and is replaced by another
+   thread, which then calls timer_sleep(). In order for a thread to
+   be preempted by the CPU, interrupts must be enabled. In
+   timer_sleep(), after the current interrupt level is checked to
+   ensure that interrupts are on (the ASSERT statement in
+   timer_sleep() fails otherwise) and the `ticks' parameter is checked
+   to ensure that is positive (timer_sleep() returns immediately
+   otherwise), interrupts are disabled. Interrupts are not restored
+   back to the original interrupt level until the end of
+   timer_sleep(). For this reason, no thread state is examined or
+   changed while interrupts are on in timer_sleep(). Thus, race
+   conditions are avoided when multiple threads call timer_sleep()
+   simultaneously.
 
 >> A5: How are race conditions avoided when a timer interrupt occurs
 >> during a call to timer_sleep()?
+   In timer_sleep(), after the current interrupt level is checked to
+   ensure that interrupts are on (the ASSERT statement in
+   timer_sleep() fails otherwise) and the `ticks' parameter is
+   checked to ensure that is positive (timer_sleep() returns
+   immediately otherwise), interrupts are disabled. Interrupts are
+   not restored back to the original interrupt level until the end of
+   timer_sleep(). For this reason, no thread state is examined or
+   changed while interrupts are on in timer_sleep(). When interrupts
+   are off in timer_sleep(), it is impossible for a timer interrupt
+   to occur. Thus, race conditions are avoided when a timer interrupt
+   occurs during a call to timer_sleep().
 
 ---- RATIONALE ----
 
 >> A6: Why did you choose this design?  In what ways is it superior to
 >> another design you considered?
+   We chose this design because it is a clean and simple way to
+   implement the alarm clock. Another design we considered is one in
+   which the `sleep' member of the `thread' struct of each thread is
+   stored in a globally declared array instead of within the `thread'
+   struct of each thread. However, this approach is less clean because
+   it separates `sleep' from the other state variables that are
+   members of the `thread' struct. For this reason, we chose a design
+   in which `sleep' is a member of the `thread' struct of each thread.
 
 			 PRIORITY SCHEDULING
 			 ===================
@@ -83,32 +154,153 @@ which parts.
 >> B1: Copy here the declaration of each new or changed `struct' or
 >> `struct' member, global or static variable, `typedef', or
 >> enumeration.  Identify the purpose of each in 25 words or less.
+    int og_priority;                    /*!< Original priority of thread. */
+   This member of the `thread' struct stores the original priority of
+   the thread, before any priority donation.
+
+    struct list_elem allelem;           /*!< List element for all threads
+                                             list. */
+   This member of the `thread' struct stores the list element for a
+   thread with respect to the globally declared `all_list' `list'
+   struct.
+
+    struct list locks_held;             /*!< List of locks held by thread. */
+   This member of the `thread' struct stores the list of the locks
+   that the thread is currently holding.
+
+    struct lock *lock_waiting;          /*!< Lock that the thread is waiting
+                                             for. */
+   This member of the `thread' struct stores a pointer to the lock that
+   the thread is waiting on, if the thread is waiting on one.
 
 >> B2: Explain the data structure used to track priority donation.
 >> Use ASCII art to diagram a nested donation.  (Alternately, submit a
 >> .png file.)
+   Priority donation is tracked using the `locks_held' `list' struct.
+   The `locks_held' list contains all of the locks that the thread
+   is currently holding. If the new priority of the current thread is
+   greater than the priority of the thread with the maximum priority
+   among all of the threads holding locks that the current thread is
+   waiting on, that thread is given the new priority as well.
+
+   Below is a diagram of a nested donation:
+
+    +-----------------------+
+    |                       |   Thread A is waiting on locks
+    |       Thread A        |   X and Y.
+    | Original priority: 60 |
+    | New priority: 63      |
+    |                       |
+    +-----------------------+
+               | | 
+               | |  Donation
+              -   -
+              \   /
+               \ /
+    +-----------------------+   +-----------------------+
+    |                       |   |                       |
+    |       Thread B        |   |       Thread C        |
+    | Original priority: 59 |   | Original priority: 58 |
+    | New priority: 60      |   | New priority: 58      |
+    |                       |   |                       |
+    +-----------------------+   +-----------------------+
+                |                           |
+           +--------+                  +--------+
+           | Lock W |                  | Lock X |
+           +--------+                  +--------+
+
+
+    +-----------------------+
+    |                       |   Thread C is waiting on locks
+    |       Thread B        |   X and Y.
+    | Original priority: 59 |
+    | New priority: 60      |
+    |                       |
+    +-----------------------+
+               | | 
+               | |  Donation
+              -   -
+              \   /
+               \ /
+    +-----------------------+   +-----------------------+
+    |                       |   |                       |
+    |       Thread D        |   |       Thread E        |
+    | Original priority: 58 |   | Original priority: 57 |
+    | New priority: 60      |   | New priority: 57      |
+    |                       |   |                       |
+    +-----------------------+   +-----------------------+
+                |                           |
+           +--------+                  +--------+
+           | Lock Y |                  | Lock Z |
+           +--------+                  +--------+
+
 
 ---- ALGORITHMS ----
 
 >> B3: How do you ensure that the highest priority thread waiting for
 >> a lock, semaphore, or condition variable wakes up first?
+   We ensure that the highest priority thread waiting for a lock,
+   semaphore, or condition variable wakes up first by using a
+   list_less_priority_lock() and list_less_priority_thread()
+   comparision function in thread_set_priority(). The
+   list_less_priority_lock() comparison function checks whether the
+   priority of one thread is less than the priority of another thread.
 
 >> B4: Describe the sequence of events when a call to lock_acquire()
 >> causes a priority donation.  How is nested donation handled?
+   When a call to lock_acquire() causes a priority donation, the
+   priority of the thread that is holding the lock that is currently
+   being examined is increased to that of the thread that is waiting
+   on the lock if it is less than the thread that is waiting on the
+   lock. The current lock is then changed to the lock that that thread
+   is waiting on, and the thread that is currently being examined is
+   then changed to that thread. This process continues, with a
+   recursion depth of at most 8.
 
 >> B5: Describe the sequence of events when lock_release() is called
 >> on a lock that a higher-priority thread is waiting for.
+   When lock_release() is called on a lock that a higher-priority
+   thread is waiting for, the thread with the highest priority among
+   all threads that are waiting on the lock is obtained, and its
+   priority is found. The priority of the current thread is then set
+   to this priority if it is greater than the priority of the current
+   thread. This is done for each lock that the original thread (the
+   one that gave up the lock) is holding.
 
 ---- SYNCHRONIZATION ----
 
 >> B6: Describe a potential race in thread_set_priority() and explain
 >> how your implementation avoids it.  Can you use a lock to avoid
 >> this race?
+   A potential race in thread_set_priority() is the setting of the
+   priority values of the current thread. In particular, the use of
+   two separate priority members in the `thread' struct (`priority'
+   and `og_priority') means that the two values are set using two
+   separate operations, which can mean that the process might not
+   finish completely before the running thread is preempted by the
+   CPU and replaced by another thread. Our implementation avoids
+   this issue by never calling thread_set_priority() internally to
+   begin with.
+
+   A lock can be used to avoid this race. In particular, a globally
+   declared lock variable can be made, with a call to lock_acquire()
+   to acquire the lock at the beginning of thread_set_priority() and
+   a call to lock_release() to release the lock at the end of
+   thread_set_priority().
 
 ---- RATIONALE ----
 
 >> B7: Why did you choose this design?  In what ways is it superior to
 >> another design you considered?
+   We chose this design because it was relatively straightforward to
+   implement. Another design we considered is one in which the
+   the `og_priority' member of the `thread' struct of each thread is
+   stored in a globally declared array instead of within the `thread'
+   struct of each thread. However, this approach is less clean because
+   it separates `og_priority' from the other state variables that are
+   members of the `thread' struct. For this reason, we chose a design
+   in which `og_priority' is a member of the `thread' struct of each
+   thread.
 
 			  ADVANCED SCHEDULER
 			  ==================
@@ -118,6 +310,20 @@ which parts.
 >> C1: Copy here the declaration of each new or changed `struct' or
 >> `struct' member, global or static variable, `typedef', or
 >> enumeration.  Identify the purpose of each in 25 words or less.
+    int nice;                           /*!< Niceness. */
+   This member of the `thread' struct stores the niceness of a thread,
+   which is a measure of how willing the thread to yield the CPU to
+   another thread.
+
+    fixed_point recent_cpu;             /*!< Recent CPU usage. */
+   This member of the `thread' struct stores the recent CPU usage of
+   the thread, which is an exponentially weighted moving average of
+   the CPU usage of the thread.
+    
+    fixed_point load_avg;               /*!< Load average. */
+   This member of the `thread' struct stores the load average of the
+   thread, which is an exponentially weighted moving average of the
+   load average of the thread.
 
 ---- ALGORITHMS ----
 
@@ -143,9 +349,21 @@ ticks   A   B   C   A   B   C   to run
 >> C3: Did any ambiguities in the scheduler specification make values
 >> in the table uncertain?  If so, what rule did you use to resolve
 >> them?  Does this match the behavior of your scheduler?
+   No, no ambiguities in the scheduler specification made values in
+   the table uncertain.
 
 >> C4: How is the way you divided the cost of scheduling between code
 >> inside and outside interrupt context likely to affect performance?
+   We divided the cost of scheduling between code inside and outside
+   interrupt context making sure that as much code as possible runs
+   inside interrupt context while avoiding potential race conditions.
+   In general, the more code that is outside interrupt context and
+   the less code that is inside interrupt context, the less responsive
+   the code will be because the code that is outside interrupt context
+   cannot be preempted by the CPU, since the CPU relies on interrupts
+   to preempt. On the other hand, code inside interrupt context must
+   perform its operations while avoiding potential race conditions
+   with code from other threads.
 
 ---- RATIONALE ----
 
@@ -153,6 +371,16 @@ ticks   A   B   C   A   B   C   to run
 >> disadvantages in your design choices.  If you were to have extra
 >> time to work on this part of the project, how might you choose to
 >> refine or improve your design?
+   Our design was good on the whole. Our design uses abstractions in
+   appropriate contexts, such as with fixed-point arithmetic in the
+   kernel (described below). Our design also allows race conditions
+   to be avoided where they may arise (mentioned above). However,
+   our design could have used abstractions more, especially with
+   respect to priority donation. Our designed could have also used
+   more assertions to enforce invariants where appropriate. If we
+   were to have extra time to work on this part of the project, we
+   would have used abstractions more so that direct manipulation of
+   `thread' struct members occurs less often in our code.
 
 >> C6: The assignment explains arithmetic for fixed-point math in
 >> detail, but it leaves it open to you to implement it.  Why did you
@@ -160,6 +388,17 @@ ticks   A   B   C   A   B   C   to run
 >> abstraction layer for fixed-point math, that is, an abstract data
 >> type and/or a set of functions or macros to manipulate fixed-point
 >> numbers, why did you do so?  If not, why not?
+   We implemented an abstraction layer for fixed-point math. The
+   abstraction layer contained an abstract data type (`fixed-point')
+   for fixed-point values. The abstraction layer also contains
+   functions for converting between integer and fixed-point
+   representations as well as adding an integer to a fixed-point
+   number and multiplying and dividing two fixed-point numbers. The
+   macro `NUM_FRAC_BITS' defines the number of fractional bits in
+   the fixed-point representation. We decided to do this because it
+   abstracts the details away from the main threading code. It also
+   makes maintaining the fixed-point arithmetic code easier in the
+   future.
 
 			  SURVEY QUESTIONS
 			  ================
