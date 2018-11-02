@@ -406,10 +406,6 @@ void print_ready_list(void) {
  * it should change a thread's og_priority after the thread has been created
  */
 void thread_set_priority(int new_priority) {
-    if (!thread_mlfqs) {
-        thread_current()->priority = new_priority;
-    }
-    
     thread_current()->og_priority = new_priority;
     // Only update current priority if the new_priority is higher than the
     // priorities of all the locks that the thread possesses (otherwise
