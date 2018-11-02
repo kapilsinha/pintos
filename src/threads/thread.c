@@ -150,9 +150,9 @@ void thread_tick(void) {
                 thread_e = list_entry(e, struct thread, allelem);
                 ready_threads = list_size(&ready_list);
                 
-                curr_thread = running_thread();
+                curr_thread = thread_current();
                 
-                if (is_thread(curr_thread) && curr_thread != idle_thread) {
+                if (curr_thread != idle_thread) {
                     ready_threads++;
                 }
                 
@@ -413,6 +413,7 @@ void print_ready_list(void) {
  * it should change a thread's og_priority after the thread has been created
  */
 void thread_set_priority(int new_priority) {
+    ASSERT(!thread_mlfqs);
     thread_current()->og_priority = new_priority;
     // Only update current priority if the new_priority is higher than the
     // priorities of all the locks that the thread possesses (otherwise

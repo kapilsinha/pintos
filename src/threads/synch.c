@@ -225,6 +225,11 @@ void lock_acquire(struct lock *lock) {
     ASSERT(lock != NULL);
     ASSERT(!intr_context());
     ASSERT(!lock_held_by_current_thread(lock));
+    if (thread_mlfqs) {
+        sema_down(&lock->semaphore);
+        lock->holder = thread_current();
+        return;
+    }
 
     // Disable interrupts
     enum intr_level old_level;
@@ -233,13 +238,7 @@ void lock_acquire(struct lock *lock) {
     // want to block the thread before we're done.
     // Check if this thread can acquire the lock.
     bool lockable = sema_try_down(&lock->semaphore);
-    if (lockable) {// If the lock can be acquired just take it
-        ASSERT(list_empty(&lock->semaphore.waiters));
-        // The lock priority is the max of priorities of the threads waiting
-        // on it, and right now it has no waiting threads, so it shouldn't
-        // have a priority
-    }
-    else {
+    if (!lockable) {
         // Set lock priority using the threads that are waiting for this lock.
         if (list_empty(&lock->semaphore.waiters)) {
             // Since nobody was waiting, set priority to this thread
@@ -343,6 +342,12 @@ bool lock_try_acquire(struct lock *lock) {
 void lock_release(struct lock *lock) {
     ASSERT(lock != NULL);
     ASSERT(lock_held_by_current_thread(lock));
+    
+    if (thread_mlfqs) {
+        lock->holder = NULL;
+        sema_up(&lock->semaphore);
+        return;
+    }
 
     // Disable interrupts
     enum intr_level old_level;
