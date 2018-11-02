@@ -22,10 +22,10 @@ fixed_point add(fixed_point x, int n) {
 
 /*! Multiplies two fixed-point numbers together. */
 fixed_point multiply(fixed_point x, fixed_point y) {
-    return (((fixed_point) x) * y) / (1ull << NUM_FRAC_BITS);
+    return ((int64_t) x) * y / (1ull << NUM_FRAC_BITS);
 }
 
 /*! Divides a fixed-point number by a fixed-point number. */
 fixed_point divide(fixed_point x, fixed_point y) {
-    return (((fixed_point) x) * (1ull << NUM_FRAC_BITS)) / y;
+    return ((int64_t) x) * (1ull << NUM_FRAC_BITS) / y;
 }

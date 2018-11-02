@@ -6,11 +6,11 @@
 #include <stdint.h>
 
 /*! The number of fractional bits in the fixed-point number representation. */
-#define NUM_FRAC_BITS 32
+#define NUM_FRAC_BITS 14
 
 /*! The fixed-point type used to represent fixed-point numbers in the
     kernel. */
-typedef int64_t fixed_point;
+typedef int fixed_point;
 
 /*! Conversion functions. */
 int fixed_point_to_integer(fixed_point x);
