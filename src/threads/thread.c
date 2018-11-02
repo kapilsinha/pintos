@@ -4,6 +4,7 @@
 #include <random.h>
 #include <stdio.h>
 #include <string.h>
+#include "devices/timer.h"
 #include "threads/flags.h"
 #include "threads/interrupt.h"
 #include "threads/intr-stubs.h"
@@ -11,6 +12,7 @@
 #include "threads/switch.h"
 #include "threads/synch.h"
 #include "threads/vaddr.h"
+#include "threads/fixed-point.h"
 #ifdef USERPROG
 #include "userprog/process.h"
 #endif
@@ -126,8 +128,57 @@ void thread_start(void) {
 /*! Called by the timer interrupt handler at each timer tick.
     Thus, this function runs in an external interrupt context. */
 void thread_tick(void) {
+    struct list_elem *e;
+    struct thread *thread_e;
+    
+    if (thread_mlfqs) {
+        if (timer_ticks() % TIMER_FREQ == 0) {
+            int ready_threads;
+            struct thread *curr_thread;
+            fixed_point load_avg;
+            fixed_point recent_cpu;
+            
+            for (e = list_begin(&all_list); e != list_end(&all_list);
+                 e = list_next(e)) {
+                thread_e = list_entry(e, struct thread, allelem);
+                ready_threads = list_size(&ready_list);
+                
+                curr_thread = running_thread();
+                
+                if (is_thread(curr_thread) && curr_thread != idle_thread) {
+                    ready_threads++;
+                }
+                
+                load_avg = (LOAD_AVG_DECAY * thread_e->load_avg
+                            + integer_to_fixed_point(ready_threads))
+                           / (LOAD_AVG_DECAY + 1);
+                recent_cpu = ((2 * load_avg) / (2 * load_avg + 1))
+                             * thread_e->recent_cpu
+                             + integer_to_fixed_point(thread_e->nice);
+                
+                thread_e->load_avg = load_avg;
+                thread_e->recent_cpu = recent_cpu;
+            }
+        }
+        
+        if (timer_ticks() % TIME_SLICE == 0) {
+            int priority;
+            
+            for (e = list_begin(&all_list); e != list_end(&all_list);
+                 e = list_next(e)) {
+                thread_e = list_entry(e, struct thread, allelem);
+                
+                priority = PRI_MAX
+                           - (fixed_point_to_integer(thread_e->recent_cpu) / 4)
+                           - (thread_e->nice * 2);
+                
+                thread_e->priority = priority;
+            }
+        }
+    }
+    
     struct thread *t = thread_current();
-
+    
     /* Update statistics. */
     if (t == idle_thread)
         idle_ticks++;
@@ -182,7 +233,12 @@ tid_t thread_create(const char *name, int priority, thread_func *function,
         return TID_ERROR;
 
     /* Initialize thread. */
-    init_thread(t, name, priority);
+    if (thread_mlfqs) {
+        init_thread(t, name, PRI_DEFAULT);
+    }
+    else {
+        init_thread(t, name, priority);
+    }
     tid = t->tid = allocate_tid();
 
     /* Stack frame for kernel_thread(). */
@@ -217,7 +273,11 @@ tid_t thread_create(const char *name, int priority, thread_func *function,
 void thread_block(void) {
     ASSERT(!intr_context());
     ASSERT(intr_get_level() == INTR_OFF);
-
+    
+    struct thread *curr_thread;
+    
+    curr_thread = thread_current();
+    
     thread_current()->status = THREAD_BLOCKED;
     schedule();
 }
@@ -331,7 +391,10 @@ void thread_foreach(thread_action_func *func, void *aux) {
 
 /*! Sets the current thread's priority to NEW_PRIORITY. */
 void thread_set_priority(int new_priority) {
-    thread_current()->priority = new_priority;
+    if (!thread_mlfqs) {
+        thread_current()->priority = new_priority;
+    }
+    
     // Force the current thread to yield if it is no longer the highest
     // priority of all the threads on the ready queue
     thread_yield();
@@ -343,26 +406,23 @@ int thread_get_priority(void) {
 }
 
 /*! Sets the current thread's nice value to NICE. */
-void thread_set_nice(int nice UNUSED) {
-    /* Not yet implemented. */
+void thread_set_nice(int nice) {
+    thread_current()->nice = nice;
 }
 
 /*! Returns the current thread's nice value. */
 int thread_get_nice(void) {
-    /* Not yet implemented. */
-    return 0;
+    return thread_current()->nice;
 }
 
 /*! Returns 100 times the system load average. */
 int thread_get_load_avg(void) {
-    /* Not yet implemented. */
-    return 0;
+    return fixed_point_to_integer(thread_current()->load_avg * ONE_HUNDRED);
 }
 
 /*! Returns 100 times the current thread's recent_cpu value. */
 int thread_get_recent_cpu(void) {
-    /* Not yet implemented. */
-    return 0;
+    return fixed_point_to_integer(thread_current()->recent_cpu * ONE_HUNDRED);
 }
 
 /*! Idle thread.  Executes when no other thread is ready to run.

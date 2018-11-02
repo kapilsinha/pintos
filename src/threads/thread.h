@@ -9,6 +9,7 @@
 #include <debug.h>
 #include <list.h>
 #include <stdint.h>
+#include "fixed-point.h"
 
 /*! States in a thread's life cycle. */
 enum thread_status {
@@ -21,12 +22,16 @@ enum thread_status {
 /*! Thread identifier type.
     You can redefine this to whatever type you like. */
 typedef int tid_t;
-#define TID_ERROR ((tid_t) -1)          /*!< Error value for tid_t. */
+#define TID_ERROR ((tid_t) -1)              /*!< Error value for tid_t. */
 
 /* Thread priorities. */
-#define PRI_MIN 0                       /*!< Lowest priority. */
-#define PRI_DEFAULT 31                  /*!< Default priority. */
-#define PRI_MAX 63                      /*!< Highest priority. */
+#define PRI_MIN 0                           /*!< Lowest priority. */
+#define PRI_DEFAULT 31                      /*!< Default priority. */
+#define PRI_MAX 63                          /*!< Highest priority. */
+
+/* Other constants. */
+#define ONE_HUNDRED 100                     /*!< One hundred. */
+#define LOAD_AVG_DECAY ((fixed_point) 59)   /*!< Load average decay rate. */
 
 /*! A kernel thread or user process.
 
@@ -96,7 +101,10 @@ struct thread {
     enum thread_status status;          /*!< Thread state. */
     char name[16];                      /*!< Name (for debugging purposes). */
     uint8_t *stack;                     /*!< Saved stack pointer. */
+    int nice;                           /*!< Niceness. */
     int priority;                       /*!< Priority. */
+    fixed_point recent_cpu;             /*!< Recent CPU usage. */
+    fixed_point load_avg;               /*!< Load average. */
     int64_t sleep;                      /*!< How long to sleep for. */
     struct list_elem allelem;           /*!< List element for all threads list. */
     /**@}*/
