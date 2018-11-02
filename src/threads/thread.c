@@ -406,15 +406,15 @@ void print_ready_list(void) {
 /*! Sets the current thread's priority and og_priority to NEW_PRIORITY.
  * We never call this function internally, since it modifies og_priority;
  * this function should only be called by the test functions, since only
- * it should change a thread's og_priority after the thread has been created
+ * it should change a thread's og_priority after the thread has been created.
  */
 void thread_set_priority(int new_priority) {
     ASSERT(!thread_mlfqs);
     thread_current()->og_priority = new_priority;
     // Only update current priority if the new_priority is higher than the
-    // priorities of all the locks that the thread possesses (otherwise
+    // priorities of all the locks that the thread possesses
     // (a thread should not be able to lower its priority until a priority
-    // donation is released
+    // donation is released)
     struct lock *max_lock
         = list_entry(list_max(&thread_current()->locks_held,
           &list_less_priority_lock, NULL), struct lock, thread_elem);
