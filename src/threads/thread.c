@@ -132,6 +132,7 @@ void thread_tick(void) {
     struct thread *thread_e;
     
     if (thread_mlfqs) {
+        // Actions per second
         if (timer_ticks() % TIMER_FREQ == 0) {
             int ready_threads;
             struct thread *curr_thread;
@@ -152,17 +153,28 @@ void thread_tick(void) {
                 load_avg = (LOAD_AVG_DECAY * thread_e->load_avg
                             + integer_to_fixed_point(ready_threads))
                            / (LOAD_AVG_DECAY + 1);
+                recent_cpu = add(multiply(
+                             divide(2 * load_avg, add(2 * load_avg, 1)),
+                             thread_e->recent_cpu), thread_e->nice);
+                /*
                 recent_cpu = ((2 * load_avg) / (2 * load_avg + 1))
                              * thread_e->recent_cpu
                              + integer_to_fixed_point(thread_e->nice);
+                */
                 
                 thread_e->load_avg = load_avg;
                 thread_e->recent_cpu = recent_cpu;
             }
         }
         
+        // Actions per timer tick
         if (timer_ticks() % TIME_SLICE == 0) {
             int priority;
+            // Increment recent CPU if current thread is not the idle one
+            if (thread_current() != idle_thread) {
+                thread_current()->recent_cpu
+                    = add(thread_current()->recent_cpu, 1);
+            }
             
             for (e = list_begin(&all_list); e != list_end(&all_list);
                  e = list_next(e)) {
