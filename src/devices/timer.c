@@ -81,7 +81,6 @@ int64_t timer_elapsed(int64_t then) {
 /*! Sleeps for approximately TICKS timer ticks.  Interrupts must
     be turned on. */
 void timer_sleep(int64_t ticks) {
-    int64_t start = timer_ticks();
     enum intr_level old_level;
 
     ASSERT(intr_get_level() == INTR_ON);
