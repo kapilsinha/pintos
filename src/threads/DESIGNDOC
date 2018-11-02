@@ -129,16 +129,16 @@ which parts.
 timer  recent_cpu    priority   thread
 ticks   A   B   C   A   B   C   to run
 -----  --  --  --  --  --  --   ------
- 0
- 4
- 8
-12
-16
-20
-24
-28
-32
-36
+ 0      0   0   0  63  61  59  Thread A
+ 4      4   0   0  62  61  59  Thread A
+ 8      8   0   0  61  61  59  Thread B
+12      8   4   0  61  60  59  Thread A
+16     12   4   0  60  60  59  Thread B
+20     12   8   0  60  59  59  Thread A
+24     16   8   0  59  59  59  Thread C
+28     16   8   0  59  59  58  Thread B
+32     16  12   4  59  58  58  Thread A
+36     20  12   4  58  58  58  Thread C
 
 >> C3: Did any ambiguities in the scheduler specification make values
 >> in the table uncertain?  If so, what rule did you use to resolve
