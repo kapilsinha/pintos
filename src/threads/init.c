@@ -78,7 +78,7 @@ static void locate_block_devices(void);
 static void locate_block_device(enum block_type, const char *name);
 #endif
 
-int main(void) NO_RETURN;
+int main(void);
 
 /*! Pintos main program. */
 int main(void) {
