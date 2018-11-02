@@ -366,7 +366,7 @@ void thread_yield(void) {
 /*! This function is called by thread_tick for each thread. It decrements the
     number of ticks this thread needs to sleep for. If the value is decremented
     to 0, then it wakes the thread. */
-void thread_desleep(struct thread *t, void *aux) {
+void thread_desleep(struct thread *t, void *aux UNUSED) {
     ASSERT(t->sleep >= 0) // The sleep value should never be negative
     if (t->sleep > 0) {// Decrement the amount to sleep
         if (--t->sleep == 0) {// Rise and shine sunshine
@@ -389,12 +389,38 @@ void thread_foreach(thread_action_func *func, void *aux) {
     }
 }
 
-/*! Sets the current thread's priority to NEW_PRIORITY. */
+/*! Print the ready list - for debugging */
+void print_ready_list(void) {
+    struct list_elem *e;
+
+    for (e = list_begin(&ready_list); e != list_end(&ready_list);
+         e = list_next(e)) {
+        struct thread *t = list_entry(e, struct thread, elem);
+        printf("tid %d, name %s, priority %d\n", t->tid, t->name, t->priority);
+    }
+}
+
+/*! Sets the current thread's priority and og_priority to NEW_PRIORITY.
+ * We never call this function internally, since it modifies og_priority;
+ * this function should only be called by the test functions, since only
+ * it should change a thread's og_priority after the thread has been created
+ */
 void thread_set_priority(int new_priority) {
     if (!thread_mlfqs) {
         thread_current()->priority = new_priority;
     }
     
+    thread_current()->og_priority = new_priority;
+    // Only update current priority if the new_priority is higher than the
+    // priorities of all the locks that the thread possesses (otherwise
+    // (a thread should not be able to lower its priority until a priority
+    // donation is released
+    struct lock *max_lock
+        = list_entry(list_max(&thread_current()->locks_held,
+          &list_less_priority_lock, NULL), struct lock, thread_elem);
+    if (new_priority > max_lock->priority) {
+        thread_current()->priority = new_priority;
+    }
     // Force the current thread to yield if it is no longer the highest
     // priority of all the threads on the ready queue
     thread_yield();
@@ -403,6 +429,11 @@ void thread_set_priority(int new_priority) {
 /*! Returns the current thread's priority. */
 int thread_get_priority(void) {
     return thread_current()->priority;
+}
+
+/*! Returns the current thread's priority. */
+int thread_get_og_priority(void) {
+    return thread_current()->og_priority;
 }
 
 /*! Sets the current thread's nice value to NICE. */
@@ -496,9 +527,14 @@ static void init_thread(struct thread *t, const char *name, int priority) {
     strlcpy(t->name, name, sizeof t->name);
     t->stack = (uint8_t *) t + PGSIZE;
     t->priority = priority;
+    // Set OG priority as well
+    t->og_priority = priority;
     t->magic = THREAD_MAGIC;
     // Set sleep to 0 initially
     t->sleep = 0;
+    // Initialize the list of locks
+    list_init(&t->locks_held);
+    t->lock_waiting = NULL;
 
     old_level = intr_disable();
     list_push_back(&all_list, &t->allelem);
