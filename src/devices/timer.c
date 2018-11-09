@@ -12,7 +12,7 @@
 #include "threads/interrupt.h"
 #include "threads/synch.h"
 #include "threads/thread.h"
-
+  
 #if TIMER_FREQ < 19
 #error 8254 timer requires TIMER_FREQ >= 19
 #endif
@@ -81,23 +81,11 @@ int64_t timer_elapsed(int64_t then) {
 /*! Sleeps for approximately TICKS timer ticks.  Interrupts must
     be turned on. */
 void timer_sleep(int64_t ticks) {
-    enum intr_level old_level;
+    int64_t start = timer_ticks();
 
     ASSERT(intr_get_level() == INTR_ON);
-
-    // Check if argument is greater than 0
-    if (ticks <= 0) {
-        return;
-    }
-    // Turn off interrupts for call to block
-    old_level = intr_disable();
-    // Set sleep value for thread
-    struct thread *t = thread_current();
-    t->sleep += ticks;
-    // Block thread
-    thread_block();
-    // Enable interrupts because if the thread is here, it has woken up
-    intr_set_level(old_level);
+    while (timer_elapsed(start) < ticks) 
+        thread_yield();
 }
 
 /*! Sleeps for approximately MS milliseconds.  Interrupts must be turned on. */
@@ -185,9 +173,9 @@ static void NO_INLINE busy_wait(int64_t loops) {
 /*! Sleep for approximately NUM/DENOM seconds. */
 static void real_time_sleep(int64_t num, int32_t denom) {
     /* Convert NUM/DENOM seconds into timer ticks, rounding down.
-
-          (NUM / DENOM) s
-       ---------------------- = NUM * TIMER_FREQ / DENOM ticks.
+          
+          (NUM / DENOM) s          
+       ---------------------- = NUM * TIMER_FREQ / DENOM ticks. 
        1 s / TIMER_FREQ ticks
     */
     int64_t ticks = num * TIMER_FREQ / denom;
@@ -195,12 +183,12 @@ static void real_time_sleep(int64_t num, int32_t denom) {
     ASSERT(intr_get_level() == INTR_ON);
     if (ticks > 0) {
         /* We're waiting for at least one full timer tick.  Use timer_sleep()
-           because it will yield the CPU to other processes. */
-        timer_sleep(ticks);
+           because it will yield the CPU to other processes. */                
+        timer_sleep(ticks); 
     }
     else {
         /* Otherwise, use a busy-wait loop for more accurate sub-tick timing. */
-        real_time_delay(num, denom);
+        real_time_delay(num, denom); 
     }
 }
 
@@ -209,5 +197,6 @@ static void real_time_delay(int64_t num, int32_t denom) {
     /* Scale the numerator and denominator down by 1000 to avoid
        the possibility of overflow. */
     ASSERT(denom % 1000 == 0);
-    busy_wait(loops_per_tick * num / 1000 * TIMER_FREQ / (denom / 1000));
+    busy_wait(loops_per_tick * num / 1000 * TIMER_FREQ / (denom / 1000)); 
 }
+
