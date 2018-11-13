@@ -72,6 +72,14 @@ static void kill(struct intr_frame *f) {
      
     /* The interrupt frame's code segment value tells us where the
        exception originated. */
+
+    /*
+     * TODO: Print process name and exit code if this is a kernel thread
+     * that is not a user process or if the halt syscall is made
+     * How do we get the exit code?
+     * Not sure if this goes here or in process.c/process_exit
+     */
+
     switch (f->cs) {
     case SEL_UCSEG:
         /* User's code segment, so it's a user exception, as we
@@ -134,6 +142,13 @@ static void page_fault(struct intr_frame *f) {
     write = (f->error_code & PF_W) != 0;
     user = (f->error_code & PF_U) != 0;
 
+    /*
+     * TODO: My guess at the logic: Delete all the below stuff.
+     * If user: kill f (but how to handle telling parent that the child has
+     * killed and how to make sure the thread drops its locks etc.?)
+     * If kernel: If we use method 1 to handle accessing user memory,
+     * this should never happen?
+     */
     /* To implement virtual memory, delete the rest of the function
        body, and replace it with code that brings in the page to
        which fault_addr refers. */
