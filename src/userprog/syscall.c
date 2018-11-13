@@ -26,13 +26,17 @@ uint32_t pop_stack(struct intr_frame *f);
  * readdir(int fd, char name[]) => Second argument is array
  */
 
-/* Check if the pointer is a user virtual address and that the virtual address
-    is mapped to physical memory. */
-int valid_pointer(void *ptr) {
-    if (is_user_vaddr(ptr) && pagedir_get_page(thread_current()->pagedir, ptr)){
-        return 1;
-    }
-    return 0;
+/* Check if the virtual address pointer is a user virtual address and that the 
+   virtual address is mapped to physical memory.
+   is_user_vaddr (defined in threads/vaddr.h) simply checks if vaddr is
+   less than the PHYS_BASE
+   pagedir_get_page (defined in pagedir.c) looks up the physical address for 
+   vaddr. Returns NULL if vaddr is unmapped in the page directory or else
+   returns the kernel virtual address corresponding to that physical address
+ */
+int valid_pointer(void *vaddr) {
+    return (is_user_vaddr(vaddr) &&
+            pagedir_get_page(thread_current()->pagedir, vaddr));
 }
 
 /* Pops an element from the interrupt stack frame passed in. */
