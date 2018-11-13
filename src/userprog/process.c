@@ -105,6 +105,13 @@ void process_exit(void) {
         pagedir_activate(NULL);
         pagedir_destroy(pd);
     }
+    /* TODO: Print process name and exit code if this is a kernel thread
+     * that is not a user process or if the halt syscall is made
+     * How do we get the exit code?
+     * Not sure if this goes here or in exception.c/kill
+     * Potentially lock the code when you write it?
+     * Filename (from process_execute) is stored in cur->name
+     */
 }
 
 /*! Sets up the CPU for running user code in the current thread.
@@ -407,6 +414,7 @@ static bool setup_stack(void **esp) {
         success = install_page(((uint8_t *) PHYS_BASE) - PGSIZE, kpage, true);
         if (success) {
             // TODO: This is merely a temporary fix
+            // Do argument passing here
             *esp = PHYS_BASE - 12;
         }
         else
