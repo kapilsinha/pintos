@@ -5,11 +5,13 @@
 #include "threads/thread.h"
 #include "threads/vaddr.h"
 #include "pagedir.h"
+#include "devices/shutdown.h"
 
 static void syscall_handler(struct intr_frame *);
 
 int valid_pointer(void *ptr);
 int sys_write(int fd, const void *buffer, unsigned size);
+uint32_t pop_stack(struct intr_frame *f);
 
 /* TODO: Check address pointers for the following syscalls:
  * exec(char *file) => First argument is char pointer
@@ -33,6 +35,13 @@ int valid_pointer(void *ptr) {
     return 0;
 }
 
+/* Pops an element from the interrupt stack frame passed in. */
+uint32_t pop_stack(struct intr_frame *f) {
+    uint32_t elem;
+    elem = *((uint32_t *) f->esp++);
+    return elem;
+}
+
 /*
  * TODO: Come up with a cleaner, more extensible way of mapping file
  * descriptors to `file' struct pointers.
@@ -54,6 +63,14 @@ void syscall_init(void) {
     intr_register_int(0x30, 3, INTR_ON, syscall_handler, "syscall");
 }
 
+/* Terminates Pintos by calling shutdown_power_off()
+    (declared in devices/shutdown.h). This should be seldom used, because you
+    lose some information about possible deadlock situations, etc. */
+void sys_halt(void) {
+    shutdown_power_off();
+    NOT_REACHED();
+}
+
 /* System call for writing to a file descriptor. Writes directly to the console
     if fd is set to 1. Returns the number of bytes written. */
 int sys_write(int fd, const void *buffer, unsigned size) {
@@ -71,14 +88,46 @@ int sys_write(int fd, const void *buffer, unsigned size) {
     }
     // Otherwise, write to the file
     else {
-        // TODO: Change
+        // TODO: Change to actually write to a file instead of the console
         putbuf(buffer, size);
         return size;
     }
 
 }
 
-static void syscall_handler(struct intr_frame *f UNUSED) {
-    printf("system call!\n");
+/* Called for system calls that are not implemented. */
+void sys_nosys(void) {
+    printf("ENOSYS: Function not implemented.\n");
+}
+
+static void syscall_handler(struct intr_frame *f) {
+    printf("System call!\n");
+    int fd;
+    const void *buffer;
+    unsigned int size;
+    // Pop the syscall number from the interrupt stack frame
+    uint32_t call_num = f->esp;
+    switch (call_num) {
+        // Terminate pintos by calling shutdown_power_off() in shutdown.h
+        case SYS_HALT:
+            printf("Halt syscall!\n");
+            sys_halt();
+            NOT_REACHED();
+
+        case SYS_WRITE:
+            printf("Write syscall!\n");
+            // Arguments should be pushed in reverse order
+            fd = (int) pop_stack(f);
+            buffer = (void *) pop_stack(f);
+            size = (unsigned int) pop_stack(f);
+            // Write to the file or console as determined by fd
+            sys_write(fd, buffer, size);
+            break;
+
+        default:
+            printf("Not implemented syscall.\n");
+            // This system call has not been implemented
+            sys_nosys();
+    }
     thread_exit();
 }
