@@ -36,7 +36,9 @@ tid_t process_execute(const char *file_name) {
         return TID_ERROR;
     strlcpy(fn_copy, file_name, PGSIZE);
 
-    /* Create a new thread to execute FILE_NAME. */
+    /* Create a new thread to execute FILE_NAME. 
+     * The thread runs start_process with argument fn_copy, which should
+     * contain the arguments in stack form */
     tid = thread_create(file_name, PRI_DEFAULT, start_process, fn_copy);
     if (tid == TID_ERROR)
         palloc_free_page(fn_copy);
@@ -85,7 +87,11 @@ int process_wait(tid_t child_tid UNUSED) {
     return -1;
 }
 
-/*! Free the current process's resources. */
+/*! Free the current process's resources.
+ *  Note: this function is called by thread_exit() ifdef USERPROG
+ *  Currently the process name and exit code are printed in the exit
+ *  syscall and kill in process (before this function is called)
+ */
 void process_exit(void) {
     struct thread *cur = thread_current();
     uint32_t *pd;
@@ -105,13 +111,6 @@ void process_exit(void) {
         pagedir_activate(NULL);
         pagedir_destroy(pd);
     }
-    /* TODO: Print process name and exit code if this is a kernel thread
-     * that is not a user process or if the halt syscall is made
-     * How do we get the exit code?
-     * Not sure if this goes here or in exception.c/kill
-     * Potentially lock the code when you write it?
-     * Filename (from process_execute) is stored in cur->name
-     */
 }
 
 /*! Sets up the CPU for running user code in the current thread.

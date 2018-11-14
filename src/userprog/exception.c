@@ -2,6 +2,7 @@
 #include <inttypes.h>
 #include <stdio.h>
 #include "userprog/gdt.h"
+#include "userprog/syscall.h" // contains exit_with_status (called in kill)
 #include "threads/interrupt.h"
 #include "threads/thread.h"
 
@@ -86,6 +87,7 @@ static void kill(struct intr_frame *f) {
            expected.  Kill the user process.  */
         printf("%s: dying due to interrupt %#04x (%s).\n",
                thread_name(), f->vec_no, intr_name(f->vec_no));
+        exit_with_status(-1); // Print exit with status (this is a user program)
         intr_dump_frame(f);
         thread_exit(); 
 
@@ -143,11 +145,11 @@ static void page_fault(struct intr_frame *f) {
     user = (f->error_code & PF_U) != 0;
 
     /*
-     * TODO: My guess at the logic: Delete all the below stuff.
-     * If user: kill f (but how to handle telling parent that the child has
-     * killed and how to make sure the thread drops its locks etc.?)
-     * If kernel: If we use method 1 to handle accessing user memory,
-     * this should never happen?
+     * If user: kill f (wait function handles telling the parent that the
+     * child has been killed and ensures that the thread drops its locks etc.)
+     * If kernel: Before trying to bring in a page for a user program, we
+     * check that the virtual address is valid - hence we should never have
+     * a page fault in the kernel program.
      */
     /* To implement virtual memory, delete the rest of the function
        body, and replace it with code that brings in the page to

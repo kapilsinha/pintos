@@ -7,12 +7,6 @@
 #include "pagedir.h"
 #include "devices/shutdown.h"
 
-static void syscall_handler(struct intr_frame *);
-
-int valid_pointer(void *ptr);
-int sys_write(int fd, const void *buffer, unsigned size);
-uint32_t pop_stack(struct intr_frame *f);
-
 /* TODO: Check address pointers for the following syscalls:
  * exec(char *file) => First argument is char pointer
  * create(char *file, unsigned size) => First argument is char pointer
@@ -47,6 +41,19 @@ uint32_t pop_stack(struct intr_frame *f) {
 }
 
 /*
+ * Prints process name (the full name passed to process_execute without
+ * the command-line arguments) and the exit status
+ * This method is called whenever a user process terminates (either via the
+ * exit syscall or through process.c/kill but not in the halt syscall).
+ * Note: I placed this method here as opposed to thread.c or process.c because
+ * the exit syscall is the only method with a status that must be printed 
+ * (the default otherwise is status -1).
+ */
+void exit_with_status(int status) {
+    printf ("%s:exit(%d)\n", thread_current()->name, status);
+}
+
+/*
  * TODO: Come up with a cleaner, more extensible way of mapping file
  * descriptors to `file' struct pointers.
  */
@@ -73,6 +80,11 @@ void syscall_init(void) {
 void sys_halt(void) {
     shutdown_power_off();
     NOT_REACHED();
+}
+
+void sys_exit(int status) {
+    // TODO: Implement this 
+    exit_with_status(status);
 }
 
 /* System call for writing to a file descriptor. Writes directly to the console
