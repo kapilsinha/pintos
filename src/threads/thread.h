@@ -100,6 +100,12 @@ struct thread {
     struct list_elem allelem;           /*!< List element for all threads list. */
     /**@}*/
 
+    /*! Used for implementing waiting for userprog assignment. */
+    /**@{*/
+    struct list children;              /*!< List of immediate children of this thread. */
+    struct list_elem child_elem;       /*!< Element for the list of children. */
+    /**@}*/
+
     /*! Shared between thread.c and synch.c. */
     /**@{*/
     struct list_elem elem;              /*!< List element. */
@@ -142,6 +148,8 @@ const char *thread_name(void);
 void thread_exit(void) NO_RETURN;
 void thread_yield(void);
 
+struct thread *child_thread(tid_t child_tid);
+
 /*! Performs some operation on thread t, given auxiliary data AUX. */
 typedef void thread_action_func(struct thread *t, void *aux);
 
@@ -156,4 +164,3 @@ int thread_get_recent_cpu(void);
 int thread_get_load_avg(void);
 
 #endif /* threads/thread.h */
-

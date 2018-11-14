@@ -277,11 +277,43 @@ void thread_yield(void) {
     ASSERT(!intr_context());
 
     old_level = intr_disable();
-    if (cur != idle_thread) 
+    if (cur != idle_thread)
         list_push_back(&ready_list, &cur->elem);
     cur->status = THREAD_READY;
     schedule();
     intr_set_level(old_level);
+}
+
+/*! This function returns a pointer to the thread struct of the child thread
+    with child_tid if it is a direct child of the current thread. If not,
+    this function returns NULL.
+    Does not check if there are multiple children of this thread with the same
+    thread id. */
+struct thread *child_thread(tid_t child_tid) {
+    struct thread *parent = thread_current();
+    struct list_elem *e;
+    // If this thread has no children, then we return NULL
+    if (list_empty(&parent->children)) {
+        return NULL;
+    }
+    // Loop over all of the children of the current thread
+    else {
+        e = list_begin(&parent->children);
+        struct thread *child = list_entry(e, struct thread, child_elem);
+        if (child->tid == child_tid) {// Check the first element
+            return child;
+        }
+        else {
+            for (e = list_next(child); // Loop over the rest
+                e != list_end(&parent->children); e = list_next(e)) {
+                child = list_entry(e, struct thread, child_elem);
+                if (child->tid == child_tid) {
+                    return child;
+                }
+            }
+            return NULL;
+        }
+    }
 }
 
 /*! Invoke function 'func' on all threads, passing along 'aux'.
@@ -404,6 +436,9 @@ static void init_thread(struct thread *t, const char *name, int priority) {
     t->priority = priority;
     t->magic = THREAD_MAGIC;
 
+    // Initialize the list of children for this thread
+    list_init(&t->children);
+
     old_level = intr_disable();
     list_push_back(&all_list, &t->allelem);
     intr_set_level(old_level);
@@ -447,7 +482,7 @@ static struct thread * next_thread_to_run(void) {
    After this function and its caller returns, the thread switch is complete. */
 void thread_schedule_tail(struct thread *prev) {
     struct thread *cur = running_thread();
-  
+
     ASSERT(intr_get_level() == INTR_OFF);
 
     /* Mark us as running. */
@@ -507,4 +542,3 @@ static tid_t allocate_tid(void) {
 /*! Offset of `stack' member within `struct thread'.
     Used by switch.S, which can't figure it out on its own. */
 uint32_t thread_stack_ofs = offsetof(struct thread, stack);
-
