@@ -23,6 +23,21 @@
 static thread_func start_process NO_RETURN;
 static bool load(const char *cmdline, void (**eip)(void), void **esp);
 
+/*
+ * Print word dump of a buffer starting at addr and of size length bytes
+ */
+void word_dump(void *addr, int length) {
+    uint32_t *curr = (uint32_t *) addr;
+    uint32_t *end = (uint32_t *) ((char *) addr + length);
+    printf("Word dump:\n");
+    printf("Start: %#04x\n", (unsigned int) curr);
+    printf("End: %#04x\n", (unsigned int) end);
+    while (curr < end) {
+        printf("Address: %#04x -- Value: %#04x\n", (unsigned int) curr, *curr);
+        curr++;
+    }
+}
+
 /*! Starts a new thread running a user program loaded from FILENAME.  The new
     thread may be scheduled (and may even exit) before process_execute()
     returns.  Returns the new process's thread id, or TID_ERROR if the thread
@@ -500,18 +515,22 @@ static bool setup_stack(const char *filename, void **esp) {
             // Must ensure that pointer arithmetic is done properly on *esp,
             // so we cast to (char *) - so subtracting decreases one byte
             *esp = (char *) *esp;
-            *esp = *esp - ((int) *esp % WORD_SIZE);
+            // It is important that *esp be cast to an unsigned int as opposed
+            // to a regular int (otherwise the mod turns out to be negative
+            // since esp can be "negative")
+            *esp = *esp - ((uint32_t) *esp % WORD_SIZE);
 
             // Now store the pointers to the args (the last pointer is NULL
             // so we simply don't add anything there - leaving it as 0)
-            void ** arg_ptrs = (void **) ((void *) (*esp - (word_count + 1) * WORD_SIZE));
+            char ** arg_ptrs = (char **) (*esp - (word_count + 1) * WORD_SIZE);
             char * temp = args;
 
             bool last_null = true; // true if last char was a NULL
+            i = 0;
             while (temp < (char *) PHYS_BASE) {
                 if (last_null) {
-                    *arg_ptrs = (void *) temp;
-                    arg_ptrs = (void *) ((char *) arg_ptrs + WORD_SIZE);
+                    arg_ptrs[i] = temp;
+                    i++;
                     last_null = false;
                 }
                 else {
@@ -521,20 +540,16 @@ static bool setup_stack(const char *filename, void **esp) {
                 }
                 temp++;
             }
-
+            *esp = (char *) arg_ptrs;
             *esp -= WORD_SIZE;
             // Store a pointer to the pointer to argv[0]
-            void *argv = (void *) ((char *) *esp + WORD_SIZE);
-            // *((uint32_t *) *esp) = (uint32_t) argv;
-            *(char ***) esp = ((char **)esp + 1);
-
+            char *argv = (char *) (*esp + WORD_SIZE);
+            * (char **) *esp = (char *) argv;
 
             *esp = (char *) *esp;
             *esp -= WORD_SIZE;
             // Store argc
-            printf("argc : %d\n", word_count);
-            *esp = (int *) *esp;
-            *((uint32_t *) *esp) = (uint32_t) word_count;
+            * (int *) *esp = word_count;
 
             // esp now points to the start (bottom) of the stack
             *esp = (char *) *esp;
@@ -543,6 +558,11 @@ static bool setup_stack(const char *filename, void **esp) {
         else
             palloc_free_page(kpage);
     }
+    // The hex_dump isn't very useful for debugging since it is difficult
+    // to read hex, so I wrote my own word_dump function that is better
+    // for debugging
+    // hex_dump(0, *esp, (int) (PHYS_BASE - *esp), true);
+    word_dump(*esp, (int) (PHYS_BASE - *esp));
     return success;
 }
 
