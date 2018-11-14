@@ -18,6 +18,8 @@
 #include "threads/thread.h"
 #include "threads/vaddr.h"
 
+#define WORD_SIZE 4
+
 static thread_func start_process NO_RETURN;
 static bool load(const char *cmdline, void (**eip)(void), void **esp);
 
@@ -29,6 +31,33 @@ tid_t process_execute(const char *file_name) {
     char *fn_copy;
     tid_t tid;
 
+    /*
+     * The name of the thread must be just the command name without its
+     * arguments (so the process termination messages are printed correctly).
+     */
+    int start_index = 0;
+    int end_index = 0;
+    int i = 0;
+    while (file_name[i] != '\0') {
+        if (file_name[i] == ' ') {
+            if (start_index == i) {
+                start_index++;
+            }
+            else {
+                break;
+            }
+        }
+        else {
+            end_index = i;
+        }
+        i++;
+    }
+    char command_name[end_index - start_index + 2];
+    for (i = start_index; i <= end_index; i++) {
+        command_name[i] = file_name[i];
+    }
+    command_name[end_index - start_index + 1] = '\0';
+
     /* Make a copy of FILE_NAME.
        Otherwise there's a race between the caller and load(). */
     fn_copy = palloc_get_page(0);
@@ -39,7 +68,8 @@ tid_t process_execute(const char *file_name) {
     /* Create a new thread to execute FILE_NAME. 
      * The thread runs start_process with argument fn_copy, which should
      * contain the arguments in stack form */
-    tid = thread_create(file_name, PRI_DEFAULT, start_process, fn_copy);
+    // tid = thread_create(file_name, PRI_DEFAULT, start_process, fn_copy);
+    tid = thread_create(command_name, PRI_DEFAULT, start_process, fn_copy);
     if (tid == TID_ERROR)
         palloc_free_page(fn_copy);
     return tid;
@@ -189,7 +219,7 @@ struct Elf32_Phdr {
 #define PF_R 4          /*!< Readable. */
 /*! @} */
 
-static bool setup_stack(void **esp);
+static bool setup_stack(const char *file_name, void **esp);
 static bool validate_segment(const struct Elf32_Phdr *, struct file *);
 static bool load_segment(struct file *file, off_t ofs, uint8_t *upage,
                          uint32_t read_bytes, uint32_t zero_bytes,
@@ -288,7 +318,7 @@ bool load(const char *file_name, void (**eip) (void), void **esp) {
     }
 
     /* Set up stack. */
-    if (!setup_stack(esp))
+    if (!setup_stack(file_name, esp))
         goto done;
 
     /* Start address. */
@@ -404,7 +434,7 @@ static bool load_segment(struct file *file, off_t ofs, uint8_t *upage,
 
 /*! Create a minimal stack by mapping a zeroed page at the top of
     user virtual memory. */
-static bool setup_stack(void **esp) {
+static bool setup_stack(const char *filename, void **esp) {
     uint8_t *kpage;
     bool success = false;
 
@@ -412,9 +442,100 @@ static bool setup_stack(void **esp) {
     if (kpage != NULL) {
         success = install_page(((uint8_t *) PHYS_BASE) - PGSIZE, kpage, true);
         if (success) {
-            // TODO: This is merely a temporary fix
-            // Do argument passing here
-            *esp = PHYS_BASE - 12;
+            // Calculate the total size/length of the arguments
+            int char_count = 0;
+            int word_count = 0;
+            int i = 0;
+            bool last_space = true; // true if last char was a space
+            while (filename[i] != '\0') {
+                if (filename[i] != ' ') {
+                    if (last_space) {
+                        word_count++;
+                        last_space = false;
+                    }
+                    char_count++;
+                }
+                else {
+                    last_space = true;
+                }
+                i++;
+            }
+            
+            // Add arguments to the stack
+            // Stack pointer now points to the start (bottom) of the part of
+            // the stack that contains the arguments themselves
+            // (each argument followed by a null char)
+            *esp = PHYS_BASE - (char_count + word_count);
+            char * args = *esp;
+            // Fuck it I won't use strtok_r. No fucking clue if I can use 
+            // strdup or have to do some dumbass allocation of a page and if I 
+            // have to do that whether I can allocate another page but that
+            // may lead other pages to be booted so maybe I can do it in this one
+            // but then I could be overwriting my shit so then I should offset it
+            // but that's jank jank jank and could go over the page boundaries
+            // dumbass shit. While loop it is motherfucker
+            i = 0;
+            int j = 0;
+            while (filename[i] != '\0') {
+                // If you encounter a non-space char, add it to the stack
+                if (filename[i] != ' ') {
+                    args[j] = filename[i];
+                    j++;
+                }
+                else {
+                    // If you encounter a space, add a null terminator to the
+                    // word if you haven't already
+                    if (j != 0 && args[j - 1] != '\0') {
+                        args[j] = '\0';
+                        j++;
+                    }
+                }
+                i++;
+            }
+            // Add the last null terminator if it hasn't been added yet
+            args[word_count + char_count - 1] = '\0';
+
+            // Word align esp by rounding down to a multiple of 4
+            // since word-aligned accesses are faster than unaligned accesses
+            // Must ensure that pointer arithmetic is done properly on *esp,
+            // so we cast to (char *) - so subtracting decreases one byte
+            *esp = (char *) *esp;
+            *esp = *esp - ((int) *esp % WORD_SIZE);
+
+            // Now store the pointers to the args (the last pointer is NULL
+            // so we simply don't add anything there - leaving it as 0)
+            void ** arg_ptrs = (void **) ((void *) (*esp - (word_count + 1) * WORD_SIZE));
+            char * temp = args;
+            
+            bool last_null = true; // true if last char was a NULL
+            while (temp < (char *) PHYS_BASE) {
+                if (last_null) {
+                    *arg_ptrs = (void *) temp;
+                    arg_ptrs = (void *) ((char *) arg_ptrs + WORD_SIZE);
+                    last_null = false;
+                }
+                else {
+                    if (*temp == '\0') {
+                        last_null = true;
+                    }
+                }
+                temp++;
+            }
+            
+            *esp -= WORD_SIZE;
+            // Store a pointer to the pointer to argv[0]
+            void * argv = (void *) ((char *) *esp + WORD_SIZE);
+            **esp = argv;
+
+            *esp = (char *) *esp;
+            *esp -= WORD_SIZE;
+            // Store argc
+            *esp = (int *) *esp;
+            **esp = word_count;
+            
+            // esp now points to the start (bottom) of the stack
+            *esp = (char *) *esp;
+            *esp -= WORD_SIZE;
         }
         else
             palloc_free_page(kpage);
