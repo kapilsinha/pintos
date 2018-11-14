@@ -23,11 +23,11 @@ uint32_t pop_stack(struct intr_frame *f);
  * readdir(int fd, char name[]) => Second argument is array
  */
 
-/* Check if the virtual address pointer is a user virtual address and that the 
+/* Check if the virtual address pointer is a user virtual address and that the
    virtual address is mapped to physical memory.
    is_user_vaddr (defined in threads/vaddr.h) simply checks if vaddr is
    less than the PHYS_BASE
-   pagedir_get_page (defined in pagedir.c) looks up the physical address for 
+   pagedir_get_page (defined in pagedir.c) looks up the physical address for
    vaddr. Returns NULL if vaddr is unmapped in the page directory or else
    returns the kernel virtual address corresponding to that physical address
  */
@@ -49,7 +49,7 @@ uint32_t pop_stack(struct intr_frame *f) {
  * This method is called whenever a user process terminates (either via the
  * exit syscall or through process.c/kill but not in the halt syscall).
  * Note: I placed this method here as opposed to thread.c or process.c because
- * the exit syscall is the only method with a status that must be printed 
+ * the exit syscall is the only method with a status that must be printed
  * (the default otherwise is status -1).
  */
 void exit_with_status(int status) {
@@ -86,7 +86,7 @@ void sys_halt(void) {
 }
 
 void sys_exit(int status) {
-    // TODO: Implement this 
+    // TODO: Implement this
     exit_with_status(status);
 }
 
@@ -125,7 +125,7 @@ static void syscall_handler(struct intr_frame *f) {
     const void *buffer;
     unsigned int size;
     // Pop the syscall number from the interrupt stack frame
-    uint32_t call_num = f->esp;
+    uint32_t call_num = *((uint32_t *) f->esp);
     switch (call_num) {
         // Terminate pintos by calling shutdown_power_off() in shutdown.h
         case SYS_HALT:
