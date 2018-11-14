@@ -7,6 +7,9 @@
 #include "pagedir.h"
 #include "devices/shutdown.h"
 
+static void syscall_handler(struct intr_frame *);
+uint32_t pop_stack(struct intr_frame *f);
+
 /* TODO: Check address pointers for the following syscalls:
  * exec(char *file) => First argument is char pointer
  * create(char *file, unsigned size) => First argument is char pointer
