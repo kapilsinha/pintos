@@ -65,7 +65,7 @@ tid_t process_execute(const char *file_name) {
         return TID_ERROR;
     strlcpy(fn_copy, file_name, PGSIZE);
 
-    /* Create a new thread to execute FILE_NAME. 
+    /* Create a new thread to execute FILE_NAME.
      * The thread runs start_process with argument fn_copy, which should
      * contain the arguments in stack form */
     // tid = thread_create(file_name, PRI_DEFAULT, start_process, fn_copy);
@@ -460,15 +460,15 @@ static bool setup_stack(const char *filename, void **esp) {
                 }
                 i++;
             }
-            
+
             // Add arguments to the stack
             // Stack pointer now points to the start (bottom) of the part of
             // the stack that contains the arguments themselves
             // (each argument followed by a null char)
             *esp = PHYS_BASE - (char_count + word_count);
             char * args = *esp;
-            // Fuck it I won't use strtok_r. No fucking clue if I can use 
-            // strdup or have to do some dumbass allocation of a page and if I 
+            // Fuck it I won't use strtok_r. No fucking clue if I can use
+            // strdup or have to do some dumbass allocation of a page and if I
             // have to do that whether I can allocate another page but that
             // may lead other pages to be booted so maybe I can do it in this one
             // but then I could be overwriting my shit so then I should offset it
@@ -506,7 +506,7 @@ static bool setup_stack(const char *filename, void **esp) {
             // so we simply don't add anything there - leaving it as 0)
             void ** arg_ptrs = (void **) ((void *) (*esp - (word_count + 1) * WORD_SIZE));
             char * temp = args;
-            
+
             bool last_null = true; // true if last char was a NULL
             while (temp < (char *) PHYS_BASE) {
                 if (last_null) {
@@ -521,18 +521,21 @@ static bool setup_stack(const char *filename, void **esp) {
                 }
                 temp++;
             }
-            
+
             *esp -= WORD_SIZE;
             // Store a pointer to the pointer to argv[0]
-            void * argv = (void *) ((char *) *esp + WORD_SIZE);
-            **esp = argv;
+            void *argv = (void *) ((char *) *esp + WORD_SIZE);
+            // *((uint32_t *) *esp) = (uint32_t) argv;
+            *(char ***) esp = ((char **)esp + 1);
+
 
             *esp = (char *) *esp;
             *esp -= WORD_SIZE;
             // Store argc
+            printf("argc : %d\n", word_count);
             *esp = (int *) *esp;
-            **esp = word_count;
-            
+            *((uint32_t *) *esp) = (uint32_t) word_count;
+
             // esp now points to the start (bottom) of the stack
             *esp = (char *) *esp;
             *esp -= WORD_SIZE;
