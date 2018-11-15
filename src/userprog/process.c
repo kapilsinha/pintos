@@ -84,7 +84,7 @@ tid_t process_execute(const char *file_name) {
      * The thread runs start_process with argument fn_copy, which should
      * contain the arguments in stack form */
     // tid = thread_create(file_name, PRI_DEFAULT, start_process, fn_copy);
-    tid = thread_create(command_name, PRI_DEFAULT, start_process, fn_copy);
+    tid = child_thread_create(command_name, PRI_DEFAULT, start_process, fn_copy);
     if (tid == TID_ERROR)
         palloc_free_page(fn_copy);
     return tid;
@@ -126,9 +126,20 @@ static void start_process(void *file_name_) {
 
     This function will be implemented in problem 2-2.  For now, it does
     nothing. */
-int process_wait(tid_t child_tid UNUSED) {
-    // TODO: Infinite loop
-    while (1) {}
+int process_wait(tid_t child_tid) {
+    // Get the child process wait struct that corresponds to this child_tid
+    struct child_process *c = get_child_process(thread_current(), child_tid);
+    if (c) {// We found a child with this tid
+        // Try to get the semaphore
+        sema_down(&c->signal);
+        // Get the exit status
+        int exit_status = c->exit_status;
+        // Child has finished running so delete this struct from list
+        list_remove(&c->elem);
+        // Return the exit status
+        return exit_status;
+    }
+    // We did not find a child with this tid
     return -1;
 }
 
@@ -544,15 +555,15 @@ static bool setup_stack(const char *filename, void **esp) {
             *esp -= WORD_SIZE;
             // Store a pointer to the pointer to argv[0]
             char *argv = (char *) (*esp + WORD_SIZE);
-            * (char **) *esp = (char *) argv;
+            *((char **) *esp) = (char *) argv;
 
-            *esp = (char *) *esp;
+            // *esp = (char *) *esp; // This does not do anything
             *esp -= WORD_SIZE;
             // Store argc
             * (int *) *esp = word_count;
 
             // esp now points to the start (bottom) of the stack
-            *esp = (char *) *esp;
+            // *esp = (char *) *esp; // This doesn't do anything either
             *esp -= WORD_SIZE;
         }
         else
@@ -562,7 +573,7 @@ static bool setup_stack(const char *filename, void **esp) {
     // to read hex, so I wrote my own word_dump function that is better
     // for debugging
     // hex_dump(0, *esp, (int) (PHYS_BASE - *esp), true);
-    word_dump(*esp, (int) (PHYS_BASE - *esp));
+    // word_dump(*esp, (int) (PHYS_BASE - *esp));
     return success;
 }
 

@@ -9,6 +9,7 @@
 #include <debug.h>
 #include <list.h>
 #include <stdint.h>
+#include <threads/synch.h>
 
 /*! States in a thread's life cycle. */
 enum thread_status {
@@ -89,6 +90,13 @@ typedef int tid_t;
    ready state is on the run queue, whereas only a thread in the
    blocked state is on a semaphore wait list.
 */
+struct child_process {
+    struct thread *child;
+    struct semaphore signal;
+    int exit_status;
+    struct list_elem elem;
+};
+
 struct thread {
     /*! Owned by thread.c. */
     /**@{*/
@@ -103,7 +111,7 @@ struct thread {
     /*! Used for implementing waiting for userprog assignment. */
     /**@{*/
     struct list children;              /*!< List of immediate children of this thread. */
-    struct list_elem child_elem;       /*!< Element for the list of children. */
+    struct thread *parent;             /*!< Pointer to the parent thread. */
     /**@}*/
 
     /*! Shared between thread.c and synch.c. */
@@ -136,6 +144,7 @@ void thread_tick(void);
 void thread_print_stats(void);
 
 typedef void thread_func(void *aux);
+tid_t child_thread_create(const char *name, int priority, thread_func *, void *);
 tid_t thread_create(const char *name, int priority, thread_func *, void *);
 
 void thread_block(void);
@@ -148,7 +157,7 @@ const char *thread_name(void);
 void thread_exit(void) NO_RETURN;
 void thread_yield(void);
 
-struct thread *child_thread(tid_t child_tid);
+struct child_process *get_child_process(struct thread *parent, tid_t child_tid);
 
 /*! Performs some operation on thread t, given auxiliary data AUX. */
 typedef void thread_action_func(struct thread *t, void *aux);

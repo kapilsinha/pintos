@@ -8,7 +8,7 @@
 #include "devices/shutdown.h"
 
 static void syscall_handler(struct intr_frame *);
-uint32_t pop_stack(struct intr_frame *f);
+uint32_t peek_stack(struct intr_frame *f, int back);
 
 /* TODO: Check address pointers for the following syscalls:
  * exec(char *file) => First argument is char pointer
@@ -37,24 +37,46 @@ int valid_pointer(void *vaddr) {
 }
 
 /* Pops an element from the interrupt stack frame passed in. */
-uint32_t pop_stack(struct intr_frame *f) {
+// TODO: Access but do not pop
+uint32_t peek_stack(struct intr_frame *f, int back) {
     uint32_t elem;
-    elem = *((uint32_t *) f->esp++);
+    elem = *((uint32_t *) f->esp + back);
     return elem;
 }
 
-/*
- * Prints process name (the full name passed to process_execute without
- * the command-line arguments) and the exit status
- * This method is called whenever a user process terminates (either via the
- * exit syscall or through process.c/kill but not in the halt syscall).
- * Note: I placed this method here as opposed to thread.c or process.c because
- * the exit syscall is the only method with a status that must be printed
- * (the default otherwise is status -1).
- */
-void exit_with_status(int status) {
+ /*
+  * Prints process name (the full name passed to process_execute without
+  * the command-line arguments) and the exit status
+  * Also accesses this process' parent and sets its exit status and sema_up
+  * This method is called whenever a user process terminates (either via the
+  * exit syscall or through process.c/kill but not in the halt syscall) and so
+  * a call to this function is followed by a call to thread_exit)
+  * Note: I placed this method here as opposed to thread.c or process.c because
+  * the exit syscall is the only method with a status that must be printed
+  * (the default otherwise is status -1).
+  */
+ void exit_with_status(int status) {
+     // If the parent is dead, this process's parent pointer should already
+     // point to NULL - in which case you don't have to update the parent
+     struct child_process *c;
+     if (thread_current()->parent) {
+         c = get_child_process(thread_current()->parent, thread_current()->tid);
+         // TODO: Get rid of the assert later
+         assert (c->child->tid == thread_current()->tid);
+         c->exit_status = status;
+     }
+
+     // Iterate over all of your children and set all their parents to NULL
+     struct list_elem *e;
+     for (e = list_begin(&thread_current()->children);
+          e != list_end(&thread_current()->children); e = list_next(e)) {
+        c = list_entry(e, struct child_process, elem);
+        c->child->parent = NULL;
+    }
+
     printf ("%s:exit(%d)\n", thread_current()->name, status);
-}
+    sema_up(&c->signal);
+ }
 
 /*
  * TODO: Come up with a cleaner, more extensible way of mapping file
@@ -117,36 +139,42 @@ int sys_write(int fd, const void *buffer, unsigned size) {
 /* Called for system calls that are not implemented. */
 void sys_nosys(void) {
     printf("ENOSYS: Function not implemented.\n");
+    return;
 }
 
 static void syscall_handler(struct intr_frame *f) {
-    printf("System call!\n");
+    // printf("System call!\n");
     int fd;
     const void *buffer;
     unsigned int size;
     // Pop the syscall number from the interrupt stack frame
-    uint32_t call_num = *((uint32_t *) f->esp);
+    uint32_t call_num = peek_stack(f, 0);
     switch (call_num) {
         // Terminate pintos by calling shutdown_power_off() in shutdown.h
         case SYS_HALT:
-            printf("Halt syscall!\n");
+            // printf("Halt syscall!\n");
             sys_halt();
             NOT_REACHED();
 
         case SYS_WRITE:
-            printf("Write syscall!\n");
+            // printf("Write syscall!\n");
             // Arguments should be pushed in reverse order
-            fd = (int) pop_stack(f);
-            buffer = (void *) pop_stack(f);
-            size = (unsigned int) pop_stack(f);
+            fd = (int) peek_stack(f, 1); // TODO: Change to peek
+            buffer = (void *) peek_stack(f, 2);
+            size = (unsigned int) peek_stack(f, 3);
             // Write to the file or console as determined by fd
             sys_write(fd, buffer, size);
             break;
 
+        case SYS_WAIT:
+            printf("Wait syscall\n");
+            return;
+
         default:
-            printf("Not implemented syscall.\n");
+            // printf("ENOSYS: Function not implemented.\n");
             // This system call has not been implemented
             sys_nosys();
+            thread_exit();
     }
-    thread_exit();
+    return;
 }
