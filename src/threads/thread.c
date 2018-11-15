@@ -136,6 +136,66 @@ void thread_print_stats(void) {
            idle_ticks, kernel_ticks, user_ticks);
 }
 
+/*! Equivalent to thread_create but called by a parent spawning a child,
+ *  so the parent adds to its list of children and initializes those
+ *  values appropriately. */
+tid_t child_thread_create(const char *name, int priority, thread_func *function,
+                    void *aux) {
+    struct thread *t;
+    struct kernel_thread_frame *kf;
+    struct switch_entry_frame *ef;
+    struct switch_threads_frame *sf;
+    tid_t tid;
+
+    ASSERT(function != NULL);
+
+    /* Allocate thread. */
+    t = palloc_get_page(PAL_ZERO);
+    if (t == NULL)
+        return TID_ERROR;
+
+    /* Initialize thread. */
+    init_thread(t, name, priority);
+    tid = t->tid = allocate_tid();
+
+    /* Stack frame for kernel_thread(). */
+    kf = alloc_frame(t, sizeof *kf);
+    kf->eip = NULL;
+    kf->function = function;
+    kf->aux = aux;
+
+    /* Stack frame for switch_entry(). */
+    ef = alloc_frame(t, sizeof *ef);
+    ef->eip = (void (*) (void)) kernel_thread;
+
+    /* Stack frame for switch_threads(). */
+    sf = alloc_frame(t, sizeof *sf);
+    sf->eip = switch_entry;
+    sf->ebp = 0;
+
+    // Initialize the list of children
+    list_init(&t->children);
+
+    // Set parent of this thread we are creating to current thread
+    t->parent = thread_current();
+
+    // TODO: Do I have to dynamically allocate the new struct???
+    // Allocate child_process struct
+    struct child_process *c = palloc_get_page(PAL_ZERO);
+    if (c == NULL)
+        return TID_ERROR;
+    c->child = t;
+    sema_init(&c->signal, 0);
+    // TODO: #define NEGATIVE SIXTY NINE -69 /* Negative sixty-nine */
+    c->exit_status = -69;
+    list_push_back(&thread_current()->children, &c->elem);
+
+    /* Add to run queue. */
+    thread_unblock(t);
+
+    return tid;
+}
+
 /*! Creates a new kernel thread named NAME with the given initial PRIORITY,
     which executes FUNCTION passing AUX as the argument, and adds it to the
     ready queue.  Returns the thread identifier for the new thread, or
@@ -183,6 +243,13 @@ tid_t thread_create(const char *name, int priority, thread_func *function,
     sf = alloc_frame(t, sizeof *sf);
     sf->eip = switch_entry;
     sf->ebp = 0;
+
+    // Initialize the list of children
+    list_init(&t->children);
+
+    // Set parent of thread to NULL (if a thread is to be created as a child
+    // of its parent, it would call the child_create_thread function)
+    t->parent = NULL;
 
     /* Add to run queue. */
     thread_unblock(t);
@@ -284,36 +351,29 @@ void thread_yield(void) {
     intr_set_level(old_level);
 }
 
-/*! This function returns a pointer to the thread struct of the child thread
-    with child_tid if it is a direct child of the current thread. If not,
-    this function returns NULL.
-    Does not check if there are multiple children of this thread with the same
-    thread id. */
-struct thread *child_thread(tid_t child_tid) {
-    struct thread *parent = thread_current();
+/*! This function returns a pointer to the child process wait struct given
+    a pointer to the parent thread and the tid of the child we are looking for.
+    If no child with this tid is found, return NULL. */
+struct child_process *get_child_process(struct thread *parent, tid_t child_tid) {
+    // Check if this parent is actually running or exists
+    if (!parent) {
+        return NULL;
+    }
     struct list_elem *e;
     // If this thread has no children, then we return NULL
     if (list_empty(&parent->children)) {
         return NULL;
     }
     // Loop over all of the children of the current thread
-    else {
-        e = list_begin(&parent->children);
-        struct thread *child = list_entry(e, struct thread, child_elem);
-        if (child->tid == child_tid) {// Check the first element
-            return child;
-        }
-        else {
-            for (e = list_next(child); // Loop over the rest
-                e != list_end(&parent->children); e = list_next(e)) {
-                child = list_entry(e, struct thread, child_elem);
-                if (child->tid == child_tid) {
-                    return child;
-                }
-            }
-            return NULL;
+    struct child_process *c = list_entry(e, struct child_process, elem);
+    for (e = list_begin(&parent->children);
+        e != list_end(&parent->children); e = list_next(e)) {
+        c = list_entry(e, struct child_process, elem);
+        if (c->child->tid == child_tid) {
+            return c;
         }
     }
+    return NULL;
 }
 
 /*! Invoke function 'func' on all threads, passing along 'aux'.
