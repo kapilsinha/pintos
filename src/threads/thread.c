@@ -189,6 +189,7 @@ tid_t child_thread_create(const char *name, int priority, thread_func *function,
     // TODO: #define NEGATIVE SIXTY NINE -69 /* Negative sixty-nine */
     c->exit_status = -69;
     list_push_back(&thread_current()->children, &c->elem);
+    // print_child_processes(thread_current());
 
     /* Add to run queue. */
     thread_unblock(t);
@@ -351,6 +352,25 @@ void thread_yield(void) {
     intr_set_level(old_level);
 }
 
+/*! Prints the child process structs of the argument thread.
+ *  This function is useful for debugging.
+ */
+void print_child_processes(struct thread *parent) {
+    struct list_elem *e;
+    if (list_empty(&parent->children)) {
+        printf("No children\n");
+        return;
+    }
+    printf("Children of thread %s:\n", parent->name);
+    struct child_process *c;
+    for (e = list_begin(&parent->children);
+         e != list_end(&parent->children); e = list_next(e)) {
+        c = list_entry(e, struct child_process, elem);
+        printf("  Child thread name: %s, tid: %d\n", c->child->name, c->child->tid);
+    }
+    return;
+}
+
 /*! This function returns a pointer to the child process wait struct given
     a pointer to the parent thread and the tid of the child we are looking for.
     If no child with this tid is found, return NULL. */
@@ -365,9 +385,9 @@ struct child_process *get_child_process(struct thread *parent, tid_t child_tid) 
         return NULL;
     }
     // Loop over all of the children of the current thread
-    struct child_process *c = list_entry(e, struct child_process, elem);
+    struct child_process *c;
     for (e = list_begin(&parent->children);
-        e != list_end(&parent->children); e = list_next(e)) {
+         e != list_end(&parent->children); e = list_next(e)) {
         c = list_entry(e, struct child_process, elem);
         if (c->child->tid == child_tid) {
             return c;

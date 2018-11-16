@@ -91,6 +91,9 @@ tid_t process_execute(const char *file_name) {
      * contain the arguments in stack form */
     // tid = thread_create(file_name, PRI_DEFAULT, start_process, fn_copy);
     tid = child_thread_create(command_name, PRI_DEFAULT, start_process, fn_copy);
+    // TODO: If the load fails, which happens after the thread is created and
+    // in the start_process method, then the tid should be -1 I think. Somehow
+    // this needs to be returned in this method...some synchronization thing?
     // TODO: free the page thst stores command_name?
     if (tid == TID_ERROR)
         palloc_free_page(fn_copy);
@@ -135,7 +138,11 @@ static void start_process(void *file_name_) {
     nothing. */
 int process_wait(tid_t child_tid) {
     // Get the child process wait struct that corresponds to this child_tid
+    // printf("Child tid in argument: %d\n", child_tid);
+    // print_child_processes(thread_current());
     struct child_process *c = get_child_process(thread_current(), child_tid);
+    // printf("Child process struct stuff:\n");
+    // printf("Child_process struct pointer: %#04x\n", (unsigned int) c);
     if (c) { // We found a child with this tid
         // Try to get the semaphore
         // printf("Trying to get semaphore\n");

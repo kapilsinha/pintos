@@ -65,8 +65,6 @@ uint32_t peek_stack(struct intr_frame *f, int back) {
      struct child_process *c;
      if (thread_current()->parent) {
          c = get_child_process(thread_current()->parent, thread_current()->tid);
-         // TODO: Get rid of the assert later
-         // assert (c->child->tid == thread_current()->tid);
          c->exit_status = status;
      }
 
@@ -118,11 +116,13 @@ void sys_exit(int status) {
 
 // TODO: tid_t should be pid_t? But process_wait wants tid_t...
 int sys_wait(tid_t pid) {
+    // while (1) {}
     return process_wait(pid);
 }
 
 int sys_exec(const char *file_name) {
-    return process_execute(file_name);
+    tid_t id = process_execute(file_name);
+    return id;
 }
 
 /* System call for writing to a file descriptor. Writes directly to the console
@@ -183,13 +183,13 @@ static void syscall_handler(struct intr_frame *f) {
         case SYS_EXEC:
             // printf("Exec syscall\n");
             file_name = (const char *) peek_stack(f, 1);
-            sys_exec(file_name);
+            f->eax = sys_exec(file_name);
             break;
 
         case SYS_WAIT:
             // printf("Wait syscall\n");
-            pid = (tid_t) peek_stack(f, 1);
-            sys_wait(pid);
+            pid = peek_stack(f, 1);
+            f->eax = sys_wait(pid);
             break;
 
         case SYS_WRITE:
@@ -199,14 +199,14 @@ static void syscall_handler(struct intr_frame *f) {
             buffer = (void *) peek_stack(f, 2);
             size = (unsigned int) peek_stack(f, 3);
             // Write to the file or console as determined by fd
-            sys_write(fd, buffer, size);
+            f->eax = sys_write(fd, buffer, size);
             break;
-
 
         default:
             // printf("ENOSYS: Function not implemented.\n");
             // This system call has not been implemented
-            sys_nosys();
+            // sys_nosys();
+            sys_halt();
             thread_exit();
     }
     return;
