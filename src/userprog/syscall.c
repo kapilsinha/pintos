@@ -41,7 +41,7 @@ uint32_t peek_stack(struct intr_frame *f, int back) {
     uint32_t elem;
     uint32_t *addr = (uint32_t *) f->esp + back;
     // If the esp points to a bad address, immediately do exit(-1)
-    if (! valid_pointer(addr)) {
+    if (!valid_pointer(addr)) {
         sys_exit(-1);
     }
     elem = *addr;
@@ -62,9 +62,9 @@ uint32_t peek_stack(struct intr_frame *f, int back) {
  void exit_with_status(int status) {
      // If the parent is dead, this process's parent pointer should already
      // point to NULL - in which case you don't have to update the parent
-     struct child_process *c;
+     struct child_process *c = get_child_process(thread_current()->parent,
+        thread_current()->tid);
      if (thread_current()->parent) {
-         c = get_child_process(thread_current()->parent, thread_current()->tid);
          c->exit_status = status;
      }
 
