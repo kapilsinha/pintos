@@ -157,6 +157,7 @@ const char *thread_name(void);
 void thread_exit(void) NO_RETURN;
 void thread_yield(void);
 
+void print_child_processes(struct thread *parent);
 struct child_process *get_child_process(struct thread *parent, tid_t child_tid);
 
 /*! Performs some operation on thread t, given auxiliary data AUX. */
