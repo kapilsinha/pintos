@@ -10,6 +10,7 @@
 #include <list.h>
 #include <stdint.h>
 #include <threads/synch.h>
+#include <filesys/file.h>
 
 /*! States in a thread's life cycle. */
 enum thread_status {
@@ -90,10 +91,19 @@ typedef int tid_t;
    ready state is on the run queue, whereas only a thread in the
    blocked state is on a semaphore wait list.
 */
+
+/* Struct for child processes of this thread. */
 struct child_process {
     struct thread *child;
     struct semaphore signal;
     int exit_status;
+    struct list_elem elem;
+};
+
+/* Struct for file descriptors of this thread. */
+struct file_descriptor {
+    int fd;
+    struct file *file;
     struct list_elem elem;
 };
 
@@ -112,6 +122,11 @@ struct thread {
     /**@{*/
     struct list children;              /*!< List of immediate children of this thread. */
     struct thread *parent;             /*!< Pointer to the parent thread. */
+    /**@}*/
+
+    /*! Used for implementing the file system for the userprog assignment. */
+    /**@{*/
+    struct list files;              /*!< List of immediate children of this thread. */
     /**@}*/
 
     /*! Shared between thread.c and synch.c. */
