@@ -38,18 +38,7 @@ void word_dump(void *addr, int length) {
     }
 }
 
-/*! Starts a new thread running a user program loaded from FILENAME.  The new
-    thread may be scheduled (and may even exit) before process_execute()
-    returns.  Returns the new process's thread id, or TID_ERROR if the thread
-    cannot be created. */
-tid_t process_execute(const char *file_name) {
-    char *fn_copy;
-    tid_t tid;
-
-    /*
-     * The name of the thread must be just the command name without its
-     * arguments (so the process termination messages are printed correctly).
-     */
+const char *get_command_name(const char *file_name) {
     int start_index = 0;
     int end_index = 0;
     int i = 0;
@@ -67,11 +56,27 @@ tid_t process_execute(const char *file_name) {
         }
         i++;
     }
-    char command_name[end_index - start_index + 2];
+    char *command_name = palloc_get_page(0);
     for (i = start_index; i <= end_index; i++) {
         command_name[i] = file_name[i];
     }
     command_name[end_index - start_index + 1] = '\0';
+    return command_name;
+}
+
+/*! Starts a new thread running a user program loaded from FILENAME.  The new
+    thread may be scheduled (and may even exit) before process_execute()
+    returns.  Returns the new process's thread id, or TID_ERROR if the thread
+    cannot be created. */
+tid_t process_execute(const char *file_name) {
+    char *fn_copy;
+    tid_t tid;
+
+    /*
+     * The name of the thread must be just the command name without its
+     * arguments (so the process termination messages are printed correctly).
+     */
+    const char* command_name = get_command_name(file_name);
 
     /* Make a copy of FILE_NAME.
        Otherwise there's a race between the caller and load(). */
@@ -79,12 +84,14 @@ tid_t process_execute(const char *file_name) {
     if (fn_copy == NULL)
         return TID_ERROR;
     strlcpy(fn_copy, file_name, PGSIZE);
+    // strlcpy(fn_copy, command_name, PGSIZE);
 
     /* Create a new thread to execute FILE_NAME.
      * The thread runs start_process with argument fn_copy, which should
      * contain the arguments in stack form */
     // tid = thread_create(file_name, PRI_DEFAULT, start_process, fn_copy);
     tid = child_thread_create(command_name, PRI_DEFAULT, start_process, fn_copy);
+    // TODO: free the page thst stores command_name?
     if (tid == TID_ERROR)
         palloc_free_page(fn_copy);
     return tid;
@@ -129,9 +136,11 @@ static void start_process(void *file_name_) {
 int process_wait(tid_t child_tid) {
     // Get the child process wait struct that corresponds to this child_tid
     struct child_process *c = get_child_process(thread_current(), child_tid);
-    if (c) {// We found a child with this tid
+    if (c) { // We found a child with this tid
         // Try to get the semaphore
+        // printf("Trying to get semaphore\n");
         sema_down(&c->signal);
+        // printf("Got semaphore\n");
         // Get the exit status
         int exit_status = c->exit_status;
         // Child has finished running so delete this struct from list
@@ -269,9 +278,11 @@ bool load(const char *file_name, void (**eip) (void), void **esp) {
     process_activate();
 
     /* Open executable file. */
-    file = filesys_open(file_name);
+    const char *command_name = get_command_name(file_name);
+    // TODO: free the page thst stores command_name?
+    file = filesys_open(command_name);
     if (file == NULL) {
-        printf("load: %s: open failed\n", file_name);
+        printf("load: %s: open failed\n", command_name);
         goto done;
     }
 

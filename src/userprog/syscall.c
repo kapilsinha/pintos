@@ -1,8 +1,8 @@
 #include "userprog/syscall.h"
+#include "userprog/process.h"
 #include <stdio.h>
 #include <syscall-nr.h>
 #include "threads/interrupt.h"
-#include "threads/thread.h"
 #include "threads/vaddr.h"
 #include "pagedir.h"
 #include "devices/shutdown.h"
@@ -36,11 +36,15 @@ int valid_pointer(void *vaddr) {
             pagedir_get_page(thread_current()->pagedir, vaddr));
 }
 
-/* Pops an element from the interrupt stack frame passed in. */
-// TODO: Access but do not pop
+/* Peeks/accesses an element from the interrupt stack frame passed in. */
 uint32_t peek_stack(struct intr_frame *f, int back) {
     uint32_t elem;
-    elem = *((uint32_t *) f->esp + back);
+    uint32_t *addr = (uint32_t *) f->esp + back;
+    // If the esp points to a bad address, immediately do exit(-1)
+    if (! valid_pointer(addr)) {
+        sys_exit(-1);
+    }
+    elem = *addr;
     return elem;
 }
 
@@ -62,7 +66,7 @@ uint32_t peek_stack(struct intr_frame *f, int back) {
      if (thread_current()->parent) {
          c = get_child_process(thread_current()->parent, thread_current()->tid);
          // TODO: Get rid of the assert later
-         assert (c->child->tid == thread_current()->tid);
+         // assert (c->child->tid == thread_current()->tid);
          c->exit_status = status;
      }
 
@@ -74,7 +78,7 @@ uint32_t peek_stack(struct intr_frame *f, int back) {
         c->child->parent = NULL;
     }
 
-    printf ("%s:exit(%d)\n", thread_current()->name, status);
+    printf ("%s: exit(%d)\n", thread_current()->name, status);
     sema_up(&c->signal);
  }
 
@@ -108,8 +112,17 @@ void sys_halt(void) {
 }
 
 void sys_exit(int status) {
-    // TODO: Implement this
     exit_with_status(status);
+    thread_exit();
+}
+
+// TODO: tid_t should be pid_t? But process_wait wants tid_t...
+int sys_wait(tid_t pid) {
+    return process_wait(pid);
+}
+
+int sys_exec(const char *file_name) {
+    return process_execute(file_name);
 }
 
 /* System call for writing to a file descriptor. Writes directly to the console
@@ -119,6 +132,7 @@ int sys_write(int fd, const void *buffer, unsigned size) {
     if (!valid_pointer((void*) buffer)) {
         // TODO: Not sure if this should exit or return 0 or both
         thread_exit();
+        // sys_exit(-1); // Not sure if it should be this or thread_exit()
         return 0;
     }
     // If fd is 1, we need to write to the console
@@ -146,9 +160,13 @@ static void syscall_handler(struct intr_frame *f) {
     // printf("System call!\n");
     int fd;
     const void *buffer;
+    const char *file_name;
     unsigned int size;
-    // Pop the syscall number from the interrupt stack frame
+    int status;
+    tid_t pid;
+    // Peek the syscall number from the interrupt stack frame
     uint32_t call_num = peek_stack(f, 0);
+    // printf("Call num: %d\n", call_num);
     switch (call_num) {
         // Terminate pintos by calling shutdown_power_off() in shutdown.h
         case SYS_HALT:
@@ -156,19 +174,34 @@ static void syscall_handler(struct intr_frame *f) {
             sys_halt();
             NOT_REACHED();
 
+        case SYS_EXIT:
+            // printf("Exit syscall\n");
+            status = (int) peek_stack(f, 1);
+            sys_exit(status);
+            break;
+
+        case SYS_EXEC:
+            // printf("Exec syscall\n");
+            file_name = (const char *) peek_stack(f, 1);
+            sys_exec(file_name);
+            break;
+
+        case SYS_WAIT:
+            // printf("Wait syscall\n");
+            pid = (tid_t) peek_stack(f, 1);
+            sys_wait(pid);
+            break;
+
         case SYS_WRITE:
             // printf("Write syscall!\n");
             // Arguments should be pushed in reverse order
-            fd = (int) peek_stack(f, 1); // TODO: Change to peek
+            fd = (int) peek_stack(f, 1);
             buffer = (void *) peek_stack(f, 2);
             size = (unsigned int) peek_stack(f, 3);
             // Write to the file or console as determined by fd
             sys_write(fd, buffer, size);
             break;
 
-        case SYS_WAIT:
-            printf("Wait syscall\n");
-            return;
 
         default:
             // printf("ENOSYS: Function not implemented.\n");
