@@ -176,6 +176,10 @@ tid_t child_thread_create(const char *name, int priority, thread_func *function,
     // Initialize the list of children
     list_init(&t->children);
 
+    // Initialize the list of file descriptors and the file descriptor
+    list_init(&t->files);
+    t->fd = 3;
+
     // Set parent of this thread we are creating to current thread
     t->parent = thread_current();
 
