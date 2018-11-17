@@ -192,6 +192,11 @@ tid_t child_thread_create(const char *name, int priority, thread_func *function,
     sema_init(&c->signal, 0);
     // TODO: #define NEGATIVE SIXTY NINE -69 /* Negative sixty-nine */
     c->exit_status = -69;
+    // Initialize load_sema value to 0 so the parent is forced
+    // to wait for the child when it calls sema_down
+    sema_init(&c->load_sema, 0);
+    sema_init(&c->parent_load_sema, 0);
+
     list_push_back(&thread_current()->children, &c->elem);
     // print_child_processes(thread_current());
 

@@ -98,14 +98,19 @@ void close_files(struct thread *t) {
 
      // Iterate over all of your children and set all their parents to NULL
      struct list_elem *e;
+     struct child_process *d;
      for (e = list_begin(&thread_current()->children);
           e != list_end(&thread_current()->children); e = list_next(e)) {
-        c = list_entry(e, struct child_process, elem);
-        c->child->parent = NULL;
+        d = list_entry(e, struct child_process, elem);
+        d->child->parent = NULL;
     }
 
     printf ("%s: exit(%d)\n", thread_current()->name, status);
+    //printf("c signal value: %d\n", c->signal.value);
+    //printf("c child name: %s\n", c->child->name);
+    //printf("Current thread name: %s\n", thread_current()->name);
     sema_up(&c->signal);
+    //printf("c signal value: %d\n", c->signal.value);
  }
 
 void syscall_init(void) {
@@ -126,13 +131,16 @@ void sys_exit(int status) {
 }
 
 int sys_exec(const char *file_name) {
+    // If the filename is invalid, immediately return pid -1
+    if (! valid_pointer(file_name)) {
+        return -1;
+    }
     tid_t id = process_execute(file_name);
     return id;
 }
 
 // TODO: tid_t should be pid_t? But process_wait wants tid_t...
 int sys_wait(tid_t pid) {
-    // while (1) {}
     return process_wait(pid);
 }
 
@@ -167,7 +175,13 @@ int sys_open(const char *file_name) {
     for (e = list_begin(&t->files); e != list_end(&t->files); e = list_next(e)){
         open_file = list_entry(e, struct file_descriptor, elem);
         if (strcmp(open_file->file_name, file_name) == 0) {// This file is open
-            return file_reopen(open_file->file);
+            struct file_descriptor *file_desp = palloc_get_page(PAL_ZERO);
+            file_desp->fd = t->fd++;
+            file_desp->file_name = file_name;
+            file_desp->file = file_reopen(open_file->file);
+            // Append to the file descriptor list for this thread
+            list_push_back(&t->files, &file_desp->elem);
+            return file_desp->fd;
         }
     }
     // If open has not already been called, call open to open it

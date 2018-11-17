@@ -92,11 +92,24 @@ typedef int tid_t;
    blocked state is on a semaphore wait list.
 */
 
-/* Struct for child processes of this thread. */
+/* Struct for child processes of this thread.
+ * Used for implementing wait and exec for userprog assignment.
+ * Sets up synchronization between parent and child threads until the
+ * child loads its file
+ */
 struct child_process {
     struct thread *child;
     struct semaphore signal;
     int exit_status;
+    /*
+     * load_sema is downed by the parent when it creates the thread and is
+     * upped by the child when it finishes loading.
+     * parent_load_sema is downed by the child after it loads and upped by
+     * the parent after it updates the tid
+     */
+    struct semaphore load_sema;        /* Semaphore to sync this thread and its parent */
+    struct semaphore parent_load_sema; /* Semaphore to sync this thread and its parent */
+    bool is_load_successful;           /* Set to true if load succeeded, false otherwise */
     struct list_elem elem;
 };
 

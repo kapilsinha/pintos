@@ -1,4 +1,5 @@
 #include "userprog/process.h"
+#include "userprog/syscall.h"
 #include <debug.h>
 #include <inttypes.h>
 #include <round.h>
@@ -94,9 +95,19 @@ tid_t process_execute(const char *file_name) {
     // TODO: If the load fails, which happens after the thread is created and
     // in the start_process method, then the tid should be -1 I think. Somehow
     // this needs to be returned in this method...some synchronization thing?
+    struct child_process *child = get_child_process(thread_current(), tid);
+    // Load semaphore is acquired when the child has finished loading
+    // (successfully or unsuccessfully)
+    sema_down(&child->load_sema);
     // TODO: free the page thst stores command_name?
     if (tid == TID_ERROR)
         palloc_free_page(fn_copy);
+
+    // If the file failed to load in start_proces,, we return -1
+    if (! child->is_load_successful) {
+        tid = -1;
+    }
+    sema_up(&child->parent_load_sema);
     return tid;
 }
 
@@ -115,8 +126,27 @@ static void start_process(void *file_name_) {
 
     /* If load failed, quit. */
     palloc_free_page(file_name);
-    if (!success)
+    // printf("Semaphore in child thread: %#04x\n", (unsigned int) &thread_current()->load_sema);
+    struct child_process *child = get_child_process(thread_current()->parent, thread_current()->tid);
+    if (!success) {
+        child->is_load_successful = false;
+        // printf("Upped semaphore in child thread: %#04x\n", (unsigned int) &thread_current()->load_sema);
+        sema_up(&child->load_sema);
+        sema_down(&child->parent_load_sema);
+        // The parent of the current thread now may have exited, so do not
+        // call sys_exit since exit_with_status tries to access the parent,
+        // which no longer exists
+        // sys_exit(-1);
+        // printf("Parent name 1: %s\n", thread_current()->parent->name);
         thread_exit();
+    }
+    else {
+        child->is_load_successful = true;
+        // printf("Upped semaphore in child thread: %#04x\n", (unsigned int) &thread_current()->load_sema);
+        sema_up(&child->load_sema);
+        sema_down(&child->parent_load_sema);
+        // printf("Parent name 2: %s\n", thread_current()->parent->name);
+    }
 
     /* Start the user process by simulating a return from an
        interrupt, implemented by intr_exit (in
@@ -145,9 +175,9 @@ int process_wait(tid_t child_tid) {
     // printf("Child_process struct pointer: %#04x\n", (unsigned int) c);
     if (c) { // We found a child with this tid
         // Try to get the semaphore
-        // printf("Trying to get semaphore\n");
+        //printf("%s trying to get semaphore from %s\n", thread_current()->name, c->child->name);
         sema_down(&c->signal);
-        // printf("Got semaphore\n");
+        //printf("%s got semaphore\n", thread_current()->name);
         // Get the exit status
         int exit_status = c->exit_status;
         // Child has finished running so delete this struct from list
@@ -375,7 +405,7 @@ done:
     file_close(file);
     return success;
 }
-
+
 /* load() helpers. */
 
 static bool install_page(void *upage, void *kpage, bool writable);
