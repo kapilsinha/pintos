@@ -179,10 +179,6 @@ tid_t child_thread_create(const char *name, int priority, thread_func *function,
     // Set parent of this thread we are creating to current thread
     t->parent = thread_current();
 
-    // Initialize load_sema value to 0 so the parent is forced
-    // to wait for the child when it calls sema_down
-    sema_init(&t->load_sema, 0);
-
     // TODO: Do I have to dynamically allocate the new struct???
     // Allocate child_process struct
     struct child_process *c = palloc_get_page(PAL_ZERO);
@@ -192,6 +188,11 @@ tid_t child_thread_create(const char *name, int priority, thread_func *function,
     sema_init(&c->signal, 0);
     // TODO: #define NEGATIVE SIXTY NINE -69 /* Negative sixty-nine */
     c->exit_status = -69;
+    // Initialize load_sema value to 0 so the parent is forced
+    // to wait for the child when it calls sema_down
+    sema_init(&c->load_sema, 0);
+    sema_init(&c->parent_load_sema, 0);
+
     list_push_back(&thread_current()->children, &c->elem);
     // print_child_processes(thread_current());
 
@@ -255,10 +256,6 @@ tid_t thread_create(const char *name, int priority, thread_func *function,
     // Set parent of thread to NULL (if a thread is to be created as a child
     // of its parent, it would call the child_create_thread function)
     t->parent = NULL;
-
-    // Initialize load_sema value to 0 so the parent is forced
-    // to wait for the child when it calls sema_down
-    sema_init(&t->load_sema, 10);
 
     /* Add to run queue. */
     thread_unblock(t);
@@ -339,7 +336,6 @@ void thread_exit(void) {
        when it calls thread_schedule_tail(). */
     intr_disable();
     list_remove(&thread_current()->allelem);
-    // printf("pooooooppppppyyyy\n");
     thread_current()->status = THREAD_DYING;
     schedule();
     NOT_REACHED();

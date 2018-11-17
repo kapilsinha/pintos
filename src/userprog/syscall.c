@@ -70,14 +70,19 @@ uint32_t peek_stack(struct intr_frame *f, int back) {
 
      // Iterate over all of your children and set all their parents to NULL
      struct list_elem *e;
+     struct child_process *d;
      for (e = list_begin(&thread_current()->children);
           e != list_end(&thread_current()->children); e = list_next(e)) {
-        c = list_entry(e, struct child_process, elem);
-        c->child->parent = NULL;
+        d = list_entry(e, struct child_process, elem);
+        d->child->parent = NULL;
     }
 
     printf ("%s: exit(%d)\n", thread_current()->name, status);
+    //printf("c signal value: %d\n", c->signal.value);
+    //printf("c child name: %s\n", c->child->name);
+    //printf("Current thread name: %s\n", thread_current()->name);
     sema_up(&c->signal);
+    //printf("c signal value: %d\n", c->signal.value);
  }
 
 /*
@@ -90,7 +95,7 @@ uint32_t peek_stack(struct intr_frame *f, int back) {
 //     struct file *file;
 //     file = (struct file *) fd;
 //     if ((void *) file >= PHYS_BASE) {
-//         // TODO: This needs to be checked
+//         // TODO: This needs to be checkee
 //         thread_exit();
 //         return NULL;
 //     }
