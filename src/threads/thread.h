@@ -124,6 +124,15 @@ struct thread {
     struct thread *parent;             /*!< Pointer to the parent thread. */
     /**@}*/
 
+    /*! Used for implementing exec for userprog assignment.
+     *  Sets up synchronization between parent and child threads until the
+     *  child loads its file
+     */
+    /**@{*/
+    struct semaphore load_sema;      /* Semaphore to sync this thread and its parent */
+    bool is_load_successful;         /* Set to true if load succeeded, false otherwise */
+    /**@}*/
+
     /*! Used for implementing the file system for the userprog assignment. */
     /**@{*/
     struct list files;              /*!< List of immediate children of this thread. */

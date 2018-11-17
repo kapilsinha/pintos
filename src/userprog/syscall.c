@@ -116,11 +116,14 @@ void sys_exit(int status) {
 
 // TODO: tid_t should be pid_t? But process_wait wants tid_t...
 int sys_wait(tid_t pid) {
-    // while (1) {}
     return process_wait(pid);
 }
 
 int sys_exec(const char *file_name) {
+    // If the filename is invalid, immediately return pid -1
+    if (! valid_pointer(file_name)) {
+        return -1;
+    }
     tid_t id = process_execute(file_name);
     return id;
 }
