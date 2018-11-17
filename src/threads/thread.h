@@ -103,6 +103,7 @@ struct child_process {
 /* Struct for file descriptors of this thread. */
 struct file_descriptor {
     int fd;
+    char *file_name;
     struct file *file;
     struct list_elem elem;
 };
@@ -120,13 +121,14 @@ struct thread {
 
     /*! Used for implementing waiting for userprog assignment. */
     /**@{*/
-    struct list children;              /*!< List of immediate children of this thread. */
-    struct thread *parent;             /*!< Pointer to the parent thread. */
+    struct list children;     /*!< List of immediate children of this thread. */
+    struct thread *parent;     /*!< Pointer to the parent thread. */
     /**@}*/
 
     /*! Used for implementing the file system for the userprog assignment. */
     /**@{*/
-    struct list files;              /*!< List of immediate children of this thread. */
+    struct list files;      /*!< List of file descriptors for this thread. */
+    int fd;                 /*!< The next opened file will have   */
     /**@}*/
 
     /*! Shared between thread.c and synch.c. */
