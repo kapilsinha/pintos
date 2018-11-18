@@ -124,11 +124,11 @@ static void start_process(void *file_name_) {
     if_.eflags = FLAG_IF | FLAG_MBS;
     success = load(file_name, &if_.eip, &if_.esp);
 
-    /* If load failed, quit. */
-    palloc_free_page(file_name);
     // printf("Semaphore in child thread: %#04x\n", (unsigned int) &thread_current()->load_sema);
     struct child_process *child = get_child_process(thread_current()->parent, thread_current()->tid);
     if (!success) {
+        /* If load failed, quit. */
+        palloc_free_page(file_name);
         child->is_load_successful = false;
         // printf("Upped semaphore in child thread: %#04x\n", (unsigned int) &thread_current()->load_sema);
         sema_up(&child->load_sema);
@@ -332,6 +332,19 @@ bool load(const char *file_name, void (**eip) (void), void **esp) {
         goto done;
     }
 
+    // Add this file to the list of files opened by this thread
+    struct file_descriptor *file_desp = palloc_get_page(PAL_ZERO);
+    file_desp->fd = thread_current()->fd++;
+    file_desp->file_name = command_name;
+    file_desp->file = file;
+    // printf("Adding file %s to thread %s\n", command_name, thread_current()->name);
+    list_push_back(&thread_current()->files, &file_desp->elem);
+    // Deny writing to this executable
+    // printf("Denying writing to %s\n", command_name);
+    file_deny_write(file_desp->file);
+
+    ASSERT(list_size(&thread_current()->files) == 1);
+
     /* Read program headers. */
     file_ofs = ehdr.e_phoff;
     for (i = 0; i < ehdr.e_phnum; i++) {
@@ -402,7 +415,7 @@ bool load(const char *file_name, void (**eip) (void), void **esp) {
 
 done:
     /* We arrive here whether the load is successful or not. */
-    file_close(file);
+    //file_close(file);
     return success;
 }
 

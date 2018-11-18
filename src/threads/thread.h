@@ -98,9 +98,9 @@ typedef int tid_t;
  * child loads its file
  */
 struct child_process {
-    struct thread *child;
-    struct semaphore signal;
-    int exit_status;
+    struct thread *child;           /* Pointer to the child thread to get name and other values. */
+    struct semaphore signal;        /* Semaphore to signal when child is done executing. */
+    int exit_status;                /* Exit status of the child. */
     /*
      * load_sema is downed by the parent when it creates the thread and is
      * upped by the child when it finishes loading.
@@ -115,10 +115,10 @@ struct child_process {
 
 /* Struct for file descriptors of this thread. */
 struct file_descriptor {
-    int fd;
-    char *file_name;
-    struct file *file;
-    struct list_elem elem;
+    int fd;                 /* Integer file descriptor for this file. */
+    char *file_name;        /* Name of this file. Used to check if already open. */
+    struct file *file;      /* Pointer to the file struct for this file. */
+    struct list_elem elem;  /* Linked list element. */
 };
 
 struct thread {

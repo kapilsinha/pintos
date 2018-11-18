@@ -13,6 +13,9 @@
 static void syscall_handler(struct intr_frame *);
 uint32_t peek_stack(struct intr_frame *f, int back);
 
+// List of executables opened by the kernel.
+struct list open_execs;
+
 /* Check if the virtual address pointer is a user virtual address and that the
    virtual address is mapped to physical memory.
    is_user_vaddr (defined in threads/vaddr.h) simply checks if vaddr is
@@ -22,6 +25,7 @@ uint32_t peek_stack(struct intr_frame *f, int back);
    returns the kernel virtual address corresponding to that physical address
  */
 int valid_pointer(void *vaddr) {
+    // TODO: Maybe add a lock here
     return (is_user_vaddr(vaddr) &&
             pagedir_get_page(thread_current()->pagedir, vaddr));
 }
@@ -109,6 +113,15 @@ void close_files(struct thread *t) {
     //printf("c signal value: %d\n", c->signal.value);
     //printf("c child name: %s\n", c->child->name);
     //printf("Current thread name: %s\n", thread_current()->name);
+    // Close all open file descriptors for this thread
+    //printf("Closing files for thread: %s\n", thread_current()->name);
+    for (e = list_begin(&thread_current()->files);
+        e != list_end(&thread_current()->files);
+        e = list_next(e)) {
+        struct file_descriptor *f = list_entry(e, struct file_descriptor, elem);
+        // printf("Closing file %s\n", f->file_name);
+        file_close(f->file);
+    }
     sema_up(&c->signal);
     //printf("c signal value: %d\n", c->signal.value);
  }
@@ -250,7 +263,7 @@ int sys_write(int fd, const void *buffer, unsigned size) {
     // Write to the file
     struct file *file = fd_to_file(thread_current(), fd);
     if (!file) {// Did not find a file for this thread
-        return -1;
+        return 0;
     }
     int bytes_wrote = file_write(file, buffer, size);
     return bytes_wrote;
@@ -298,7 +311,6 @@ void sys_nosys(void) {
 }
 
 static void syscall_handler(struct intr_frame *f) {
-    // printf("System call!\n");
     int fd;
     const void *buffer;
     const char *file_name;

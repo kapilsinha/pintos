@@ -10,15 +10,14 @@
 
 Kapil Sinha <ksinha@caltech.edu>
 Karthik Nair <knair@caltech.edu>
-Joseph Tilahun <jtilahun@caltech.edu>
 
->> Specify how many late tokens you are using on this assignment:  
+>> Specify how many late tokens you are using on this assignment:
 
 >> What is the Git repository and commit hash for your submission?
    (You only need to include the commit-hash in the file you submit
    on Moodle.)
 
-   Repository URL:  
+   Repository URL: https://github.com/kapilsinha/pintos
    commit ...
 
 ---- PRELIMINARIES ----
@@ -41,9 +40,16 @@ which parts.
 
 >> L1: How many hours did each team member spend on this assignment?
    Make sure that each member's total time is listed.
+   Karthik Nair: 60 h
+   Kapil Sinha: 60 h
 
 >> L2: What did each team member focus on for this assignment?  Keep
    descriptions to 25-30 words or less.
+   Karthik focused on implementing the execution system calls and file system
+   calls.
+   Kapil focused on implementing argument passing and setting up the stack.
+   Both Karthik and Kapil worked on implementing waiting for a process because
+   there were quite a few bugs that needed to be ironed out.
 
                            ARGUMENT PASSING
                            ================
@@ -53,6 +59,57 @@ which parts.
 >> A1: Copy here the declaration of each new or changed `struct' or
 >> `struct' member, global or static variable, `typedef', or
 >> enumeration.  Identify the purpose of each in 25 words or less.
+
+struct child_process {
+    struct thread *child;              /* Pointer to the child thread to get name and other values. */
+    struct semaphore signal;           /* Semaphore to signal when child is done executing. */
+    int exit_status;                   /* Exit status of the child. */
+    struct semaphore load_sema;        /* Semaphore to sync this thread and its parent */
+    struct semaphore parent_load_sema; /* Semaphore to sync this thread and its parent */
+    bool is_load_successful;           /* Set to true if load succeeded, false otherwise */
+    struct list_elem elem;
+};
+
+The above child_process struct was created to allow a parent thread to keep
+track of all of its children and implement allowing a parent thread to wait for
+its children to complete execution. The comments in the struct provide an
+explanation for each member.
+
+
+struct file_descriptor {
+    int fd;                 /* Integer file descriptor for this file. */
+    char *file_name;        /* Name of this file. Used to check if already open. */
+    struct file *file;      /* Pointer to the file struct for this file. */
+    struct list_elem elem;  /* Linked list element. */
+};
+
+The above struct is used by a thread to keep track of its open files. It is
+used to get a file descriptor for a file or get a file struct from a file
+descriptor. It is also used to check if a file has already been opened by a
+thread by comparing the name.
+
+The following members were added to the thread struct:
+
+/*! Used for implementing waiting for userprog assignment. */
+/**@{*/
+struct list children;     /*!< List of immediate children of this thread. */
+struct thread *parent;     /*!< Pointer to the parent thread. */
+/**@}*/
+
+/*! Used for implementing the file system for the userprog assignment. */
+/**@{*/
+struct list files;      /*!< List of file descriptors for this thread. */
+int fd;                 /*!< The next opened file will have   */
+/**@}*/
+
+The list of children was added to allow a thread to keep track of its children
+and know the exit status of its child threads. We added a pointer to the parent
+for our get_child_process function which takes a tid and then loops over the
+children of the thread passed in.
+We also added a list of open files to the thread struct and a counter for the
+next file descriptor.
+
+
 
 ---- ALGORITHMS ----
 
@@ -162,5 +219,3 @@ penalized.  We can't fix things until we know about them.  :-)
 >> projects?
 
 >> Any other comments?
-
-
