@@ -560,6 +560,28 @@ static bool setup_stack(const char *filename, void **esp) {
                 i++;
             }
 
+            /* To accommodate a program, we require space for:
+             * 1. All arguments - char_count + word_count
+             * 2. Word alignment - WORD_SIZE - 1 < WORD_SIZE
+             * 3. Pointer to each arg - word_count * sizeof(char *)
+             * 4. Pointer to the pointer to argv[0] - sizeof(char *)
+             * 5. argc - sizeof(int)
+             * 6. Return address / esp / extra padding - WORD_SIZE
+             */
+            int required_stack_size = (char_count + word_count)
+                                      + WORD_SIZE
+                                      + word_count * sizeof(char *)
+                                      + sizeof(char *)
+                                      + sizeof(int)
+                                      + WORD_SIZE;
+            /* 
+             * If the required stack size is more than one page, we simply
+             * do not accommodate this program and fail to load.
+             */
+            if (required_stack_size > PGSIZE) {
+                return false;
+            }
+
             /* Add arguments to the stack */
             /* 1. Add each argument followed by a null char to the stack */
             *esp = PHYS_BASE - (char_count + word_count);

@@ -12,6 +12,7 @@ Kapil Sinha <ksinha@caltech.edu>
 Karthik Nair <knair@caltech.edu>
 
 >> Specify how many late tokens you are using on this assignment:
+2
 
 >> What is the Git repository and commit hash for your submission?
    (You only need to include the commit-hash in the file you submit
@@ -24,10 +25,12 @@ Karthik Nair <knair@caltech.edu>
 
 >> If you have any preliminary comments on your submission, notes for the
 >> TAs, or extra credit, please give them here.
+N/A
 
 >> Please cite any offline or online sources you consulted while
 >> preparing your submission, other than the Pintos documentation, course
 >> text, lecture notes, and course instructors.
+N/A
 
 			   USER PROGRAMS
 			   =============
@@ -40,16 +43,20 @@ which parts.
 
 >> L1: How many hours did each team member spend on this assignment?
    Make sure that each member's total time is listed.
-   Karthik Nair: 60 h
-   Kapil Sinha: 60 h
+   Karthik Nair: 70 h
+   Kapil Sinha: 70 h
 
 >> L2: What did each team member focus on for this assignment?  Keep
    descriptions to 25-30 words or less.
    Karthik focused on implementing the execution system calls and file system
    calls.
    Kapil focused on implementing argument passing and setting up the stack.
-   Both Karthik and Kapil worked on implementing waiting for a process because
-   there were quite a few bugs that needed to be ironed out.
+   Both Karthik and Kapil worked on implementing waiting for a process, and
+   also spent much time debugging to fix the various syscalls (issues ranging
+   from logical issues, accessing garbage after a child dies, more minor bugs,
+   and memory inefficiency issues resulting from using page_alloc as opposed
+   to malloc).
+   
 
                            ARGUMENT PASSING
                            ================
@@ -61,53 +68,53 @@ which parts.
 >> enumeration.  Identify the purpose of each in 25 words or less.
 
 struct child_process {
-    struct thread *child;              /* Pointer to the child thread to get name and other values. */
-    struct semaphore signal;           /* Semaphore to signal when child is done executing. */
-    int exit_status;                   /* Exit status of the child. */
-    struct semaphore load_sema;        /* Semaphore to sync this thread and its parent */
-    struct semaphore parent_load_sema; /* Semaphore to sync this thread and its parent */
-    bool is_load_successful;           /* Set to true if load succeeded, false otherwise */
-    struct list_elem elem;
+    struct thread *child;    /* Pointer to the child thread. */
+    /* Child_tid is necessary in addition to the child pointer because
+     * the child tid must persist after the child may have exited, in
+     * order to properly wait */
+    int child_tid;           /* Tid of the child. */
+    struct semaphore signal; /* Semaphore to signal child has executed. */
+    int exit_status;         /* Exit status of the child. */
+    /* Semaphore to force thread to yield to its child so it can load */
+    struct semaphore load_sema;        
+    /* Semaphore to force thread to yield to its parent after loading */
+    struct semaphore parent_load_sema;
+    /* true if thread loaded succeeded, false otherwise */
+    bool is_load_successful; 
+    struct list_elem elem; /* Linked list element */
 };
 
-The above child_process struct was created to allow a parent thread to keep
-track of all of its children and implement allowing a parent thread to wait for
-its children to complete execution. The comments in the struct provide an
-explanation for each member.
+The above child_process struct allows a parent thread to keep track of all of its
+children, which is necessary for waiting and to generate a tid based on whether
+the program loaded.
 
-
+/* Struct for file descriptors of this thread. */
 struct file_descriptor {
-    int fd;                 /* Integer file descriptor for this file. */
-    char *file_name;        /* Name of this file. Used to check if already open. */
-    struct file *file;      /* Pointer to the file struct for this file. */
-    struct list_elem elem;  /* Linked list element. */
+    int fd;                /* Integer file descriptor for this file. */
+    char *file_name;       /* Name of file. Used to check if file is open. */
+    struct file *file;     /* Pointer to the file struct for this file. */
+    struct list_elem elem; /* Linked list element. */
 };
 
-The above struct is used by a thread to keep track of its open files. It is
-used to get a file descriptor for a file or get a file struct from a file
-descriptor. It is also used to check if a file has already been opened by a
-thread by comparing the name.
+The above struct is used by a thread to keep track of its open files, so we
+can check if a thread has already opened a file (so we know whether to
+create a new inode or simply map a file struct to a pre-existing inode).
 
 The following members were added to the thread struct:
 
-/*! Used for implementing waiting for userprog assignment. */
-/**@{*/
 struct list children;     /*!< List of immediate children of this thread. */
 struct thread *parent;     /*!< Pointer to the parent thread. */
-/**@}*/
 
-/*! Used for implementing the file system for the userprog assignment. */
-/**@{*/
-struct list files;      /*!< List of file descriptors for this thread. */
-int fd;                 /*!< The next opened file will have   */
-/**@}*/
+struct list files;       /*!< List of file descriptors for files opened
+                              by this thread. */
+int fd_next;             /*!< fd of the next opened file by this thread */
 
 The list of children was added to allow a thread to keep track of its children
 and know the exit status of its child threads. We added a pointer to the parent
 for our thread_get_child_process function which takes a tid and then loops over
 the children of the thread passed in.
 We also added a list of open files to the thread struct and a counter for the
-next file descriptor.
+next file descriptor, to handle the file syscalls for a given thread.
 
 
 
@@ -115,7 +122,29 @@ next file descriptor.
 
 >> A2: Briefly describe how you implemented argument parsing.  How do
 >> you arrange for the elements of argv[] to be in the right order?
+We avoided strtok_r to have more control of our own memory management.
+We iterated over the file/command and first calculated the number of 
+arguments (based on whitespace) and then parsed the arguments by
+concatenating adjacent arguments and separating them by a null char.
+We then subtracted the stack pointer esp by this length and added this
+concatenated series of arguments at once. Thus, we were able to add the
+arguments in reverse order on the stack by simply adding them all at the
+same time.
+Then of course, we added the word alignment, pointers to the words (which
+simply involved another loop over our arguments to get their addresses),
+pointer to argv[0], and argc (which we calculated earlier).
 >> How do you avoid overflowing the stack page?
+To accommodate a program in one page, we require space for:
+1. All arguments - char_count + word_count
+2. Word alignment - WORD_SIZE - 1 < WORD_SIZE
+3. Pointer to each arg - word_count * sizeof(char *)
+4. Pointer to the pointer to argv[0] - sizeof(char *)
+5. argc - sizeof(int)
+6. Return address / esp / extra padding - WORD_SIZE
+If a program does not fit in the sum of these sizes, we simply fail to
+load the program. Thus there is no chance for overflow. We do not allow
+any program to take up more than one page of stack space (though we could
+with relative ease, modify this).
 
 ---- RATIONALE ----
 
