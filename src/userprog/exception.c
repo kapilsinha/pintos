@@ -74,20 +74,14 @@ static void kill(struct intr_frame *f) {
     /* The interrupt frame's code segment value tells us where the
        exception originated. */
 
-    /*
-     * TODO: Print process name and exit code if this is a kernel thread
-     * that is not a user process or if the halt syscall is made
-     * How do we get the exit code?
-     * Not sure if this goes here or in process.c/process_exit
-     */
-
     switch (f->cs) {
     case SEL_UCSEG:
         /* User's code segment, so it's a user exception, as we
-           expected.  Kill the user process.  */
+           expected. Print exit status and clean up the process'
+           used resources. Kill the user process.  */
         printf("%s: dying due to interrupt %#04x (%s).\n",
                thread_name(), f->vec_no, intr_name(f->vec_no));
-        exit_with_status(-1); // Print exit with status (this is a user program)
+        exit_with_status(-1);
         intr_dump_frame(f);
         thread_exit(); 
 
@@ -109,16 +103,24 @@ static void kill(struct intr_frame *f) {
 }
 
 /*! Page fault handler.  This is a skeleton that must be filled in
-    to implement virtual memory.  Some solutions to project 2 may
-    also require modifying this code.
-
-    At entry, the address that faulted is in CR2 (Control Register
-    2) and information about the fault, formatted as described in
-    the PF_* macros in exception.h, is in F's error_code member.  The
-    example code here shows how to parse that information.  You
-    can find more information about both of these in the
-    description of "Interrupt 14--Page Fault Exception (#PF)" in
-    [IA32-v3a] section 5.15 "Exception and Interrupt Reference". */
+ *  to implement virtual memory.  Some solutions to project 2 may
+ *  also require modifying this code.
+ *
+ *  At entry, the address that faulted is in CR2 (Control Register
+ *  2) and information about the fault, formatted as described in
+ *  the PF_* macros in exception.h, is in F's error_code member.  The
+ *  example code here shows how to parse that information.  You
+ *  can find more information about both of these in the
+ *  description of "Interrupt 14--Page Fault Exception (#PF)" in
+ *  [IA32-v3a] section 5.15 "Exception and Interrupt Reference".
+ *
+ *  If the pagefault occurs in user context we kill f since process_wait
+ *  handles telling the parent that the child has been killed and frees
+ *  resources.
+ *  If the pagefault occurs in kernel context, there is an issue elsewhere
+ *  in the code and the kernel will panic. This should never happen because
+ *  we always verify pointers that users pass to the kernel.
+ */
 static void page_fault(struct intr_frame *f) {
     bool not_present;  /* True: not-present page, false: writing r/o page. */
     bool write;        /* True: access was write, false: access was read. */
@@ -144,16 +146,6 @@ static void page_fault(struct intr_frame *f) {
     write = (f->error_code & PF_W) != 0;
     user = (f->error_code & PF_U) != 0;
 
-    /*
-     * If user: kill f (wait function handles telling the parent that the
-     * child has been killed and ensures that the thread drops its locks etc.)
-     * If kernel: Before trying to bring in a page for a user program, we
-     * check that the virtual address is valid - hence we should never have
-     * a page fault in the kernel program.
-     */
-    /* To implement virtual memory, delete the rest of the function
-       body, and replace it with code that brings in the page to
-       which fault_addr refers. */
     printf("Page fault at %p: %s error %s page in %s context.\n",
            fault_addr,
            not_present ? "not present" : "rights violation",

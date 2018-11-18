@@ -93,73 +93,75 @@ typedef int tid_t;
 */
 
 /* Struct for child processes of this thread.
- * Used for implementing wait and exec for userprog assignment.
+ * Used for implementing wait and exec in userprog
  * Sets up synchronization between parent and child threads until the
  * child loads its file
  */
 struct child_process {
-    struct thread *child;           /* Pointer to the child thread to get name and other values. */
-    int child_tid;                  /* Pointer to the child thread to get name and other values. */
-    struct semaphore signal;        /* Semaphore to signal when child is done executing. */
-    int exit_status;                /* Exit status of the child. */
-    /*
-     * load_sema is downed by the parent when it creates the thread and is
-     * upped by the child when it finishes loading.
-     * parent_load_sema is downed by the child after it loads and upped by
-     * the parent after it updates the tid
-     */
-    struct semaphore load_sema;        /* Semaphore to sync this thread and its parent */
-    struct semaphore parent_load_sema; /* Semaphore to sync this thread and its parent */
-    bool is_load_successful;           /* Set to true if load succeeded, false otherwise */
-    struct list_elem elem;
+    struct thread *child;    /* Pointer to the child thread. */
+    /* Child_tid is necessary in addition to the child pointer because
+     * the child tid must persist after the child may have exited, in
+     * order to properly wait */
+    int child_tid;           /* Tid of the child. */
+    struct semaphore signal; /* Semaphore to signal child has executed. */
+    int exit_status;         /* Exit status of the child. */
+    /* Semaphore to force thread to yield to its child so it can load */
+    struct semaphore load_sema;        
+    /* Semaphore to force thread to yield to its parent after loading */
+    struct semaphore parent_load_sema;
+    /* true if thread loaded succeeded, false otherwise */
+    bool is_load_successful; 
+    struct list_elem elem; /* Linked list element */
 };
 
 /* Struct for file descriptors of this thread. */
 struct file_descriptor {
-    int fd;                 /* Integer file descriptor for this file. */
-    char *file_name;        /* Name of this file. Used to check if already open. */
-    struct file *file;      /* Pointer to the file struct for this file. */
-    struct list_elem elem;  /* Linked list element. */
+    int fd;                /* Integer file descriptor for this file. */
+    char *file_name;       /* Name of file. Used to check if file is open. */
+    struct file *file;     /* Pointer to the file struct for this file. */
+    struct list_elem elem; /* Linked list element. */
 };
 
 struct thread {
     /*! Owned by thread.c. */
     /**@{*/
-    tid_t tid;                          /*!< Thread identifier. */
-    enum thread_status status;          /*!< Thread state. */
-    char name[16];                      /*!< Name (for debugging purposes). */
-    uint8_t *stack;                     /*!< Saved stack pointer. */
-    int priority;                       /*!< Priority. */
-    struct list_elem allelem;           /*!< List element for all threads list. */
+    tid_t tid;                      /*!< Thread identifier. */
+    enum thread_status status;      /*!< Thread state. */
+    char name[16];                  /*!< Name (for debugging purposes). */
+    uint8_t *stack;                 /*!< Saved stack pointer. */
+    int priority;                   /*!< Priority. */
+    struct list_elem allelem;       /*!< List element for all threads list. */
     /**@}*/
 
     /*! Used for implementing waiting for userprog assignment. */
     /**@{*/
-    struct list children;     /*!< List of immediate children of this thread. */
-    struct thread *parent;     /*!< Pointer to the parent thread. */
+    struct list children;    /*!< List of this thread's immediate children's
+                                  child_process structs. */
+    struct thread *parent;   /*!< Pointer to the parent thread. */
     /**@}*/
 
     /*! Used for implementing the file system for the userprog assignment. */
     /**@{*/
-    struct list files;      /*!< List of file descriptors for this thread. */
-    int fd;                 /*!< The next opened file will have   */
+    struct list files;       /*!< List of file descriptors for files opened
+                                  by this thread. */
+    int fd_next;             /*!< fd of the next opened file by this thread */
     /**@}*/
 
     /*! Shared between thread.c and synch.c. */
     /**@{*/
-    struct list_elem elem;              /*!< List element. */
+    struct list_elem elem;   /*!< List element. */
     /**@}*/
 
 #ifdef USERPROG
     /*! Owned by userprog/process.c. */
     /**@{*/
-    uint32_t *pagedir;                  /*!< Page directory. */
+    uint32_t *pagedir;       /*!< Page directory. */
     /**@{*/
 #endif
 
     /*! Owned by thread.c. */
     /**@{*/
-    unsigned magic;                     /* Detects stack overflow. */
+    unsigned magic;          /* Detects stack overflow. */
     /**@}*/
 };
 
@@ -173,9 +175,14 @@ void thread_start(void);
 
 void thread_tick(void);
 void thread_print_stats(void);
+void thread_print_child_processes(struct thread *parent);
 
 typedef void thread_func(void *aux);
-tid_t child_thread_create(const char *name, int priority, thread_func *, void *);
+
+/* Creates a thread and updates the child_process structs in the parent 
+ * and file_descriptor structs in the current thread */
+tid_t child_thread_create
+    (const char *name, int priority, thread_func *, void *);
 tid_t thread_create(const char *name, int priority, thread_func *, void *);
 
 void thread_block(void);
@@ -188,13 +195,13 @@ const char *thread_name(void);
 void thread_exit(void) NO_RETURN;
 void thread_yield(void);
 
-void print_child_processes(struct thread *parent);
-struct child_process *get_child_process(struct thread *parent, tid_t child_tid);
-
 /*! Performs some operation on thread t, given auxiliary data AUX. */
 typedef void thread_action_func(struct thread *t, void *aux);
 
 void thread_foreach(thread_action_func *, void *);
+
+struct child_process *thread_get_child_process
+    (struct thread *parent, tid_t child_tid);
 
 int thread_get_priority(void);
 void thread_set_priority(int);

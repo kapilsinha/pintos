@@ -21,29 +21,24 @@
 #include "threads/malloc.h"
 
 #define WORD_SIZE 4
+#define MAX_FILENAME_LENGTH 128
 
 static thread_func start_process NO_RETURN;
 static bool load(const char *cmdline, void (**eip)(void), void **esp);
 
-/*
- * Print word dump of a buffer starting at addr and of size length bytes
+/*!
+ *  Returns the first word (separated by spaces) of a file_name.
+ *  Returns NULL if malloc fails, so the return type must be checked
  */
-void word_dump(void *addr, int length) {
-    uint32_t *curr = (uint32_t *) addr;
-    uint32_t *end = (uint32_t *) ((char *) addr + length);
-    printf("Word dump:\n");
-    printf("Start: %#04x\n", (unsigned int) curr);
-    printf("End: %#04x\n", (unsigned int) end);
-    while (curr < end) {
-        printf("Address: %#04x -- Value: %#04x\n", (unsigned int) curr, *curr);
-        curr++;
-    }
-}
-
 const char *get_command_name(const char *file_name) {
+    char *command_name = malloc(MAX_FILENAME_LENGTH * sizeof(char));
+    if (!command_name) {
+        return NULL;
+    }
     int start_index = 0;
     int end_index = 0;
     int i = 0;
+    /* Find the start and end index of the chars of the first word */
     while (file_name[i] != '\0') {
         if (file_name[i] == ' ') {
             if (start_index == i) {
@@ -58,9 +53,10 @@ const char *get_command_name(const char *file_name) {
         }
         i++;
     }
-    char *command_name = malloc(64);
-    if (!command_name) {
-        printf("FUCKED UP COMMAND NAME\n");
+    /* Return NULL if the command name cannot fit in
+     * MAX_FILENAME_LENGTH bytes */
+    if (end_index - start_index + 1 > MAX_FILENAME_LENGTH) {
+        return NULL;
     }
     for (int i = start_index; i <= end_index; i++) {
         command_name[i] = file_name[i];
@@ -69,50 +65,55 @@ const char *get_command_name(const char *file_name) {
     return command_name;
 }
 
-/*! Starts a new thread running a user program loaded from FILENAME.  The new
-    thread may be scheduled (and may even exit) before process_execute()
-    returns.  Returns the new process's thread id, or TID_ERROR if the thread
-    cannot be created. */
+/*!
+ *  Starts a new thread running a user program loaded from FILENAME.  The new
+ *  thread may be scheduled (and may even exit) before process_execute()
+ *  returns.  Returns the new process's thread id, or TID_ERROR if the thread
+ *  cannot be created.
+ */
 tid_t process_execute(const char *file_name) {
     char *fn_copy;
     tid_t tid;
 
     /*
      * The name of the thread must be just the command name without its
-     * arguments (so the process termination messages are printed correctly).
+     * arguments (so the process termination message is printed correctly).
      */
     const char* command_name = get_command_name(file_name);
 
-    /* Make a copy of FILE_NAME.
-       Otherwise there's a race between the caller and load(). */
-    fn_copy = malloc(64);
-    if (fn_copy == NULL)
+    /* 
+     * Make a copy of FILE_NAME.
+     * Otherwise there's a race between the caller and load().
+     * fn_copy is freed later in start_process
+     */
+    fn_copy = malloc(MAX_FILENAME_LENGTH * sizeof(char));
+    if (fn_copy == NULL || command_name == NULL)
         return TID_ERROR;
-    strlcpy(fn_copy, file_name, 64);
-    // strlcpy(fn_copy, command_name, PGSIZE);
+    strlcpy(fn_copy, file_name, MAX_FILENAME_LENGTH);
 
-    /* Create a new thread to execute FILE_NAME.
-     * The thread runs start_process with argument fn_copy, which should
-     * contain the arguments in stack form */
-    // tid = thread_create(file_name, PRI_DEFAULT, start_process, fn_copy);
+    /*
+     * Create a new thread to execute FILE_NAME, which adds the new thread's
+     * child_process struct to the current thread
+     */
     tid = child_thread_create(command_name, PRI_DEFAULT, start_process, fn_copy);
+    struct child_process *child = thread_get_child_process(thread_current(), tid);
 
-    // TODO: If the load fails, which happens after the thread is created and
-    // in the start_process method, then the tid should be -1 I think. Somehow
-    // this needs to be returned in this method...some synchronization thing?
-    struct child_process *child = get_child_process(thread_current(), tid);
-
-    // Load semaphore is acquired when the child has finished loading
-    // (successfully or unsuccessfully)
+    /* 
+     * load_sema is downed by the current thread when it creates the child to
+     * force the child to load
+     */
     sema_down(&child->load_sema);
-    // TODO: free the page thst stores command_name?
     if (tid == TID_ERROR)
         free(command_name);
 
-    // If the file failed to load in start_proces,, we return -1
-    if (!child->is_load_successful) {
+    /* If the file failed to load in start_proces, we set the tid to -1 */
+    if (! child->is_load_successful) {
         tid = -1;
     }
+    /*
+     * parent_load_sema is upped by the current thread after it updates the
+     * child's tid to allow the child to run
+     */
     sema_up(&child->parent_load_sema);
     return tid;
 }
@@ -129,91 +130,92 @@ static void start_process(void *file_name_) {
     if_.cs = SEL_UCSEG;
     if_.eflags = FLAG_IF | FLAG_MBS;
     success = load(file_name, &if_.eip, &if_.esp);
+    free(file_name);
 
-    // printf("Semaphore in child thread: %#04x\n", (unsigned int) &thread_current()->load_sema);
-    struct child_process *child = get_child_process(thread_current()->parent, thread_current()->tid);
+    struct child_process *child = thread_get_child_process
+        (thread_current()->parent, thread_current()->tid);
     if (!success) {
         /* If load failed, quit. */
-        free(file_name);
         child->is_load_successful = false;
-        // printf("Upped semaphore in child thread: %#04x\n", (unsigned int) &thread_current()->load_sema);
+        /* load_sema is upped by the current thread to allow the parent thread
+         * to run, since it has finished loading */
         sema_up(&child->load_sema);
+        /* parent_load_sema is downed by the current thread to force the
+         * parent to update the current thread's tid */
         sema_down(&child->parent_load_sema);
-        // The parent of the current thread now may have exited, so do not
-        // call sys_exit since exit_with_status tries to access the parent,
-        // which no longer exists
-        // sys_exit(-1);
-        // printf("Parent name 1: %s\n", thread_current()->parent->name);
         thread_exit();
     }
     else {
         child->is_load_successful = true;
-        free(file_name);
-        // printf("Upped semaphore in child thread: %#04x\n", (unsigned int) &thread_current()->load_sema);
+        /* load_sema is upped by the current thread to allow the parent thread
+         * to run, since it has finished loading */
         sema_up(&child->load_sema);
+        /* parent_load_sema is downed by the current thread to force the
+         * parent to update the current thread's tid */
         sema_down(&child->parent_load_sema);
-        // printf("Parent name 2: %s\n", thread_current()->parent->name);
     }
 
     /* Start the user process by simulating a return from an
-       interrupt, implemented by intr_exit (in
-       threads/intr-stubs.S).  Because intr_exit takes all of its
-       arguments on the stack in the form of a `struct intr_frame',
-       we just point the stack pointer (%esp) to our stack frame
-       and jump to it. */
+     * interrupt, implemented by intr_exit (in
+     * threads/intr-stubs.S).  Because intr_exit takes all of its
+     * arguments on the stack in the form of a `struct intr_frame',
+     * we just point the stack pointer (%esp) to our stack frame
+     * and jump to it.
+     */
     asm volatile ("movl %0, %%esp; jmp intr_exit" : : "g" (&if_) : "memory");
     NOT_REACHED();
 }
 
-/*! Waits for thread TID to die and returns its exit status.  If it was
-    terminated by the kernel (i.e. killed due to an exception), returns -1.
-    If TID is invalid or if it was not a child of the calling process, or if
-    process_wait() has already been successfully called for the given TID,
-    returns -1 immediately, without waiting.
-
-    This function will be implemented in problem 2-2.  For now, it does
-    nothing. */
+/*!
+ *  Waits for thread TID to die and returns its exit status.  If it was
+ *  terminated by the kernel (i.e. killed due to an exception), returns -1.
+ *  If TID is invalid or if it was not a child of the calling process, or if
+ *  process_wait() has already been successfully called for the given TID,
+ *  returns -1 immediately, without waiting.
+ */
 int process_wait(tid_t child_tid) {
-    // Get the child process wait struct that corresponds to this child_tid
-    // printf("Child tid in argument: %d\n", child_tid);
-    // print_child_processes(thread_current());
-    struct child_process *c = get_child_process(thread_current(), child_tid);
-    // printf("Child process struct stuff:\n");
-    // printf("Child_process struct pointer: %#04x\n", (unsigned int) c);
-    if (c) { // We found a child with this tid
+    struct child_process *c
+        = thread_get_child_process(thread_current(), child_tid);
+    int exit_status = -1;
+    if (c) { /* We found a child with this tid */
+        /*
+         * Wait for the child thread to terminate (the semaphore is upped
+         * when the child calls exit_with_status
+         */
         sema_down(&c->signal);
-        // Get the exit status
-        int exit_status = c->exit_status;
-        // Child has finished running so delete this struct from list
+        exit_status = c->exit_status;
+        /*
+         * Child has finished running and waiting again on this thread should
+         * return -1, so we delete this struct from list
+         */
         list_remove(&c->elem);
         free(c);
-        // Return the exit status
-        return exit_status;
     }
-    // We did not find a child with this tid
-    return -1;
+    /* We did not find a child with this tid */
+    return exit_status;
 }
 
-/*! Free the current process's resources.
- *  Note: this function is called by thread_exit() ifdef USERPROG
- *  Currently the process name and exit code are printed in the exit
- *  syscall and kill in process (before this function is called)
+/*!
+ *  Free the current process's resources.
+ *  This function is called by thread_exit() ifdef USERPROG
  */
 void process_exit(void) {
     struct thread *cur = thread_current();
     uint32_t *pd;
 
-    /* Destroy the current process's page directory and switch back
-       to the kernel-only page directory. */
+    /*
+     * Destroy the current process's page directory and switch back
+     * to the kernel-only page directory.
+     */
     pd = cur->pagedir;
     if (pd != NULL) {
         /* Correct ordering here is crucial.  We must set
-           cur->pagedir to NULL before switching page directories,
-           so that a timer interrupt can't switch back to the
-           process page directory.  We must activate the base page
-           directory before destroying the process's page
-           directory, or our active page directory will be one
-           that's been freed (and cleared). */
+         * cur->pagedir to NULL before switching page directories,
+         * so that a timer interrupt can't switch back to the
+         * process page directory.  We must activate the base page
+         * directory before destroying the process's page
+         * directory, or our active page directory will be one
+         * that's been freed (and cleared). */
         cur->pagedir = NULL;
         pagedir_activate(NULL);
         pagedir_destroy(pd);
@@ -231,7 +233,7 @@ void process_activate(void) {
     /* Set thread's kernel stack for use in processing interrupts. */
     tss_update();
 }
-
+
 /*! We load ELF binaries.  The following definitions are taken
     from the ELF specification, [ELF1], more-or-less verbatim.  */
 
@@ -302,9 +304,11 @@ static bool load_segment(struct file *file, off_t ofs, uint8_t *upage,
                          uint32_t read_bytes, uint32_t zero_bytes,
                          bool writable);
 
-/*! Loads an ELF executable from FILE_NAME into the current thread.  Stores the
-    executable's entry point into *EIP and its initial stack pointer into *ESP.
-    Returns true if successful, false otherwise. */
+/*!
+ *  Loads an ELF executable from FILE_NAME into the current thread.  Stores the
+ *  executable's entry point into *EIP and its initial stack pointer into *ESP.
+ *  Returns true if successful, false otherwise.
+ */
 bool load(const char *file_name, void (**eip) (void), void **esp) {
     struct thread *t = thread_current();
     struct Elf32_Ehdr ehdr;
@@ -321,10 +325,14 @@ bool load(const char *file_name, void (**eip) (void), void **esp) {
 
     /* Open executable file. */
     const char *command_name = get_command_name(file_name);
+    struct file_descriptor *file_desp = malloc(sizeof(struct file_descriptor));
 
-    // TODO: free the page thst stores command_name?
+    if (command_name == NULL || file_desp == NULL) {
+        printf("Malloc failed in load\n");
+        goto done;
+    }
+
     file = filesys_open(command_name);
-
     if (file == NULL) {
         printf("load: %s: open failed\n", command_name);
         goto done;
@@ -339,20 +347,13 @@ bool load(const char *file_name, void (**eip) (void), void **esp) {
         goto done;
     }
 
-    // Add this file to the list of files opened by this thread
-    struct file_descriptor *file_desp = malloc(sizeof(struct file_descriptor));
-
-    if (!file_desp) {
-        printf("FUCK\n");
-    }
-
-    file_desp->fd = thread_current()->fd++;
+    /* Add this file to the list of files opened by this thread */
+    file_desp->fd = thread_current()->fd_next++;
     file_desp->file_name = command_name;
     file_desp->file = file;
-    // printf("Adding file %s to thread %s\n", command_name, thread_current()->name);
     list_push_back(&thread_current()->files, &file_desp->elem);
-    // Deny writing to this executable
-    // printf("Denying writing to %s\n", command_name);
+
+    /* Deny writing to this executable while it is executing */
     file_deny_write(file_desp->file);
 
     /* Read program headers. */
@@ -528,8 +529,10 @@ static bool load_segment(struct file *file, off_t ofs, uint8_t *upage,
     return true;
 }
 
-/*! Create a minimal stack by mapping a zeroed page at the top of
-    user virtual memory. */
+/*!
+ *  Create a minimal stack by mapping a zeroed page at the top of
+ *  user virtual memory.
+ */
 static bool setup_stack(const char *filename, void **esp) {
     uint8_t *kpage;
     bool success = false;
@@ -538,7 +541,7 @@ static bool setup_stack(const char *filename, void **esp) {
     if (kpage != NULL) {
         success = install_page(((uint8_t *) PHYS_BASE) - PGSIZE, kpage, true);
         if (success) {
-            // Calculate the total size/length of the arguments
+            /* Calculate the total size/length of the arguments */
             int char_count = 0;
             int word_count = 0;
             int i = 0;
@@ -557,55 +560,44 @@ static bool setup_stack(const char *filename, void **esp) {
                 i++;
             }
 
-            // Add arguments to the stack
-            // Stack pointer now points to the start (bottom) of the part of
-            // the stack that contains the arguments themselves
-            // (each argument followed by a null char)
+            /* Add arguments to the stack */
+            /* 1. Add each argument followed by a null char to the stack */
             *esp = PHYS_BASE - (char_count + word_count);
             char * args = *esp;
-            // Fuck it I won't use strtok_r. No fucking clue if I can use
-            // strdup or have to do some dumbass allocation of a page and if I
-            // have to do that whether I can allocate another page but that
-            // may lead other pages to be booted so maybe I can do it in this one
-            // but then I could be overwriting my shit so then I should offset it
-            // but that's jank jank jank and could go over the page boundaries
-            // dumbass shit. While loop it is motherfucker
             i = 0;
             int j = 0;
             while (filename[i] != '\0') {
-                // If you encounter a non-space char, add it to the stack
+                /* Add every non-space char in filename to the stack */
                 if (filename[i] != ' ') {
                     args[j] = filename[i];
                     j++;
                 }
-                else {
-                    // If you encounter a space, add a null terminator to the
-                    // word if you haven't already
-                    if (j != 0 && args[j - 1] != '\0') {
-                        args[j] = '\0';
-                        j++;
-                    }
+                /* Add a null terminator for every nonconsecutive space
+                 * in filename */
+                else if (j != 0 && args[j - 1] != '\0') {
+                    args[j] = '\0';
+                    j++;
                 }
                 i++;
             }
-            // Add the last null terminator if it hasn't been added yet
+            /* Add the last null terminator if it hasn't been added yet */
             args[word_count + char_count - 1] = '\0';
 
-            // Word align esp by rounding down to a multiple of 4
-            // since word-aligned accesses are faster than unaligned accesses
-            // Must ensure that pointer arithmetic is done properly on *esp,
-            // so we cast to (char *) - so subtracting decreases one byte
-            *esp = (char *) *esp;
-            // It is important that *esp be cast to an unsigned int as opposed
-            // to a regular int (otherwise the mod turns out to be negative
-            // since esp can be "negative")
+            /*
+             * 2. Word align esp by rounding down to a multiple of 4
+             * since word-aligned accesses are faster than unaligned accesses
+             * It is important that *esp be cast to an unsigned int as opposed
+             * to a regular int (otherwise the mod turns out to be negative
+             * since esp can be "negative")
+             */
             *esp = *esp - ((uint32_t) *esp % WORD_SIZE);
 
-            // Now store the pointers to the args (the last pointer is NULL
-            // so we simply don't add anything there - leaving it as 0)
+            /*
+             * 3. Add the pointers to the args (the last pointer is NULL
+             * so we simply don't add anything there - leaving it as 0)
+             */
             char ** arg_ptrs = (char **) (*esp - (word_count + 1) * WORD_SIZE);
             char * temp = args;
-
             bool last_null = true; // true if last char was a NULL
             i = 0;
             while (temp < (char *) PHYS_BASE) {
@@ -614,36 +606,28 @@ static bool setup_stack(const char *filename, void **esp) {
                     i++;
                     last_null = false;
                 }
-                else {
-                    if (*temp == '\0') {
-                        last_null = true;
-                    }
+                else if (*temp == '\0') {
+                    last_null = true;
                 }
                 temp++;
             }
             *esp = (char *) arg_ptrs;
             *esp -= WORD_SIZE;
-            // Store a pointer to the pointer to argv[0]
+            
+            /* 4. Add the pointer to the pointer to argv[0] */
             char *argv = (char *) (*esp + WORD_SIZE);
             *((char **) *esp) = (char *) argv;
-
-            // *esp = (char *) *esp; // This does not do anything
             *esp -= WORD_SIZE;
-            // Store argc
+
+            /* 5. Add argc */
             * (int *) *esp = word_count;
 
-            // esp now points to the start (bottom) of the stack
-            // *esp = (char *) *esp; // This doesn't do anything either
+            /* esp now points to the start (bottom) of the stack */
             *esp -= WORD_SIZE;
         }
         else
             palloc_free_page(kpage);
     }
-    // The hex_dump isn't very useful for debugging since it is difficult
-    // to read hex, so I wrote my own word_dump function that is better
-    // for debugging
-    // hex_dump(0, *esp, (int) (PHYS_BASE - *esp), true);
-    // word_dump(*esp, (int) (PHYS_BASE - *esp));
     return success;
 }
 

@@ -137,9 +137,26 @@ void thread_print_stats(void) {
            idle_ticks, kernel_ticks, user_ticks);
 }
 
-/*! Equivalent to thread_create but called by a parent spawning a child,
- *  so the parent adds to its list of children and initializes those
- *  values appropriately. */
+/*! Prints the child process structs of the argument thread. */
+void thread_print_child_processes(struct thread *parent) {
+    struct list_elem *e;
+    if (list_empty(&parent->children)) {
+        printf("No children\n");
+        return;
+    }
+    printf("Children of thread %s:\n", parent->name);
+    struct child_process *c;
+    for (e = list_begin(&parent->children);
+         e != list_end(&parent->children); e = list_next(e)) {
+        c = list_entry(e, struct child_process, elem);
+        printf("  Child thread name: %s, tid: %d, exit status: %d\n",
+               c->child->name, c->child->tid, c->exit_status);
+    }
+}
+
+/*! Creates a thread (analogous to thread_create) but called by a parent
+ *  spawning a child, so the parent adds to its list of children and
+ *  initializes those values appropriately. */
 tid_t child_thread_create(const char *name, int priority, thread_func *function,
                     void *aux) {
     struct thread *t;
@@ -174,19 +191,17 @@ tid_t child_thread_create(const char *name, int priority, thread_func *function,
     sf->eip = switch_entry;
     sf->ebp = 0;
 
-    // Initialize the list of children
+    /* Initialize the list of children */
     list_init(&t->children);
 
-    // Initialize the list of file descriptors and the file descriptor
+    /* Initialize the list of file descriptors and the file descriptor */
     list_init(&t->files);
-    t->fd = 3;
+    t->fd_next = 3;
 
-    // Set parent of this thread we are creating to current thread
+    /* Set parent of this thread we are creating to current thread */
     t->parent = thread_current();
-    // printf("Thread %s is creating thread %s\n", t->parent->name, t->name);
 
-    // TODO: Do I have to dynamically allocate the new struct???
-    // Allocate child_process struct
+    /* Allocate and initialize child_process struct */
     struct child_process *c = malloc(sizeof(struct child_process));
     if (c == NULL)
         return TID_ERROR;
@@ -194,15 +209,12 @@ tid_t child_thread_create(const char *name, int priority, thread_func *function,
     c->child_tid = t->tid;
     sema_init(&c->signal, 0);
 
-    // TODO: #define NEGATIVE SIXTY NINE -69 /* Negative sixty-nine */
-    c->exit_status = -69;
-    // Initialize load_sema value to 0 so the parent is forced
-    // to wait for the child when it calls sema_down
+    /* Initialize load_sema value and parent_load_sema to 0 so downing the
+     * semaphore forces the thread to wait on the resource */
     sema_init(&c->load_sema, 0);
     sema_init(&c->parent_load_sema, 0);
 
     list_push_back(&thread_current()->children, &c->elem);
-    // print_child_processes(thread_current());
 
     /* Add to run queue. */
     thread_unblock(t);
@@ -218,12 +230,8 @@ tid_t child_thread_create(const char *name, int priority, thread_func *function,
     If thread_start() has been called, then the new thread may be scheduled
     before thread_create() returns.  It could even exit before thread_create()
     returns.  Contrariwise, the original thread may run for any amount of time
-    before the new thread is scheduled.  Use a semaphore or some other form of
-    synchronization if you need to ensure ordering.
-
-    The code provided sets the new thread's `priority' member to PRIORITY, but
-    no actual priority scheduling is implemented.  Priority scheduling is the
-    goal of Problem 1-3. */
+    before the new thread is scheduled.  
+*/
 tid_t thread_create(const char *name, int priority, thread_func *function,
                     void *aux) {
     struct thread *t;
@@ -365,29 +373,25 @@ void thread_yield(void) {
     intr_set_level(old_level);
 }
 
-/*! Prints the child process structs of the argument thread.
- *  This function is useful for debugging.
- */
-void print_child_processes(struct thread *parent) {
+/*! Invoke function 'func' on all threads, passing along 'aux'.
+    This function must be called with interrupts off. */
+void thread_foreach(thread_action_func *func, void *aux) {
     struct list_elem *e;
-    if (list_empty(&parent->children)) {
-        printf("No children\n");
-        return;
+
+    ASSERT(intr_get_level() == INTR_OFF);
+
+    for (e = list_begin(&all_list); e != list_end(&all_list);
+         e = list_next(e)) {
+        struct thread *t = list_entry(e, struct thread, allelem);
+        func(t, aux);
     }
-    printf("Children of thread %s:\n", parent->name);
-    struct child_process *c;
-    for (e = list_begin(&parent->children);
-         e != list_end(&parent->children); e = list_next(e)) {
-        c = list_entry(e, struct child_process, elem);
-        printf("  Child thread name: %s, tid: %d, exit status: %d\n", c->child->name, c->child->tid, c->exit_status);
-    }
-    return;
 }
 
 /*! This function returns a pointer to the child process wait struct given
     a pointer to the parent thread and the tid of the child we are looking for.
     If no child with this tid is found, return NULL. */
-struct child_process *get_child_process(struct thread *parent, tid_t child_tid) {
+struct child_process *thread_get_child_process
+    (struct thread *parent, tid_t child_tid) {
     // Check if this parent is actually running or exists
     if (!parent) {
         return NULL;
@@ -409,28 +413,14 @@ struct child_process *get_child_process(struct thread *parent, tid_t child_tid) 
     return NULL;
 }
 
-/*! Invoke function 'func' on all threads, passing along 'aux'.
-    This function must be called with interrupts off. */
-void thread_foreach(thread_action_func *func, void *aux) {
-    struct list_elem *e;
-
-    ASSERT(intr_get_level() == INTR_OFF);
-
-    for (e = list_begin(&all_list); e != list_end(&all_list);
-         e = list_next(e)) {
-        struct thread *t = list_entry(e, struct thread, allelem);
-        func(t, aux);
-    }
+/*! Returns the current thread's priority. */
+int thread_get_priority(void) {
+    return thread_current()->priority;
 }
 
 /*! Sets the current thread's priority to NEW_PRIORITY. */
 void thread_set_priority(int new_priority) {
     thread_current()->priority = new_priority;
-}
-
-/*! Returns the current thread's priority. */
-int thread_get_priority(void) {
-    return thread_current()->priority;
 }
 
 /*! Sets the current thread's nice value to NICE. */
@@ -455,7 +445,7 @@ int thread_get_recent_cpu(void) {
     /* Not yet implemented. */
     return 0;
 }
-
+
 /*! Idle thread.  Executes when no other thread is ready to run.
 
     The idle thread is initially put on the ready list by thread_start().

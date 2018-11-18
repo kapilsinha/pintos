@@ -104,8 +104,8 @@ int fd;                 /*!< The next opened file will have   */
 
 The list of children was added to allow a thread to keep track of its children
 and know the exit status of its child threads. We added a pointer to the parent
-for our get_child_process function which takes a tid and then loops over the
-children of the thread passed in.
+for our thread_get_child_process function which takes a tid and then loops over
+the children of the thread passed in.
 We also added a list of open files to the thread struct and a counter for the
 next file descriptor.
 

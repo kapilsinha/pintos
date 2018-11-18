@@ -3,8 +3,6 @@
 
 #include "threads/thread.h"
 
-// Word dump starting at addr of a buffer of size length - useful for debugging
-void word_dump(void *addr, int length);
 const char *get_command_name(const char *file_name);
 
 tid_t process_execute(const char *file_name);
@@ -13,4 +11,3 @@ void process_exit(void);
 void process_activate(void);
 
 #endif /* userprog/process.h */
-

@@ -18,6 +18,10 @@ void debug_panic(const char *file, int line, const char *function,
 void debug_backtrace(void);
 void debug_backtrace_all(void);
 
+/* Our debug functions */
+// Word dump starting at addr of a buffer of size length
+void debug_word_dump(void *addr, int length);
+
 #endif
 
 

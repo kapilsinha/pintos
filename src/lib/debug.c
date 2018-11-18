@@ -29,3 +29,17 @@ void debug_backtrace(void) {
     }
 }
 
+/*
+ * Print word dump of a buffer starting at addr and of size length bytes
+ */
+void debug_word_dump(void *addr, int length) {
+    uint32_t *curr = (uint32_t *) addr;
+    uint32_t *end = (uint32_t *) ((char *) addr + length);
+    printf("Word dump:\n");
+    printf("Start: %#04x\n", (unsigned int) curr);
+    printf("End: %#04x\n", (unsigned int) end);
+    while (curr < end) {
+        printf("Address: %#04x -- Value: %#04x\n", (unsigned int) curr, *curr);
+        curr++;
+    }
+}
