@@ -11,6 +11,7 @@
 #include "threads/switch.h"
 #include "threads/synch.h"
 #include "threads/vaddr.h"
+#include "threads/malloc.h"
 #ifdef USERPROG
 #include "userprog/process.h"
 #endif
@@ -186,12 +187,13 @@ tid_t child_thread_create(const char *name, int priority, thread_func *function,
 
     // TODO: Do I have to dynamically allocate the new struct???
     // Allocate child_process struct
-    struct child_process *c = palloc_get_page(PAL_ZERO);
+    struct child_process *c = malloc(sizeof(struct child_process));
     if (c == NULL)
         return TID_ERROR;
     c->child = t;
     c->child_tid = t->tid;
     sema_init(&c->signal, 0);
+
     // TODO: #define NEGATIVE SIXTY NINE -69 /* Negative sixty-nine */
     c->exit_status = -69;
     // Initialize load_sema value to 0 so the parent is forced

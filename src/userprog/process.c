@@ -18,6 +18,7 @@
 #include "threads/palloc.h"
 #include "threads/thread.h"
 #include "threads/vaddr.h"
+#include "threads/malloc.h"
 
 #define WORD_SIZE 4
 
@@ -57,8 +58,11 @@ const char *get_command_name(const char *file_name) {
         }
         i++;
     }
-    char *command_name = palloc_get_page(0);
-    for (i = start_index; i <= end_index; i++) {
+    char *command_name = malloc(64);
+    if (!command_name) {
+        printf("FUCKED UP COMMAND NAME\n");
+    }
+    for (int i = start_index; i <= end_index; i++) {
         command_name[i] = file_name[i];
     }
     command_name[end_index - start_index + 1] = '\0';
@@ -81,10 +85,10 @@ tid_t process_execute(const char *file_name) {
 
     /* Make a copy of FILE_NAME.
        Otherwise there's a race between the caller and load(). */
-    fn_copy = palloc_get_page(0);
+    fn_copy = malloc(64);
     if (fn_copy == NULL)
         return TID_ERROR;
-    strlcpy(fn_copy, file_name, PGSIZE);
+    strlcpy(fn_copy, file_name, 64);
     // strlcpy(fn_copy, command_name, PGSIZE);
 
     /* Create a new thread to execute FILE_NAME.
@@ -92,19 +96,21 @@ tid_t process_execute(const char *file_name) {
      * contain the arguments in stack form */
     // tid = thread_create(file_name, PRI_DEFAULT, start_process, fn_copy);
     tid = child_thread_create(command_name, PRI_DEFAULT, start_process, fn_copy);
+
     // TODO: If the load fails, which happens after the thread is created and
     // in the start_process method, then the tid should be -1 I think. Somehow
     // this needs to be returned in this method...some synchronization thing?
     struct child_process *child = get_child_process(thread_current(), tid);
+
     // Load semaphore is acquired when the child has finished loading
     // (successfully or unsuccessfully)
     sema_down(&child->load_sema);
     // TODO: free the page thst stores command_name?
     if (tid == TID_ERROR)
-        palloc_free_page(fn_copy);
+        free(command_name);
 
     // If the file failed to load in start_proces,, we return -1
-    if (! child->is_load_successful) {
+    if (!child->is_load_successful) {
         tid = -1;
     }
     sema_up(&child->parent_load_sema);
@@ -128,7 +134,7 @@ static void start_process(void *file_name_) {
     struct child_process *child = get_child_process(thread_current()->parent, thread_current()->tid);
     if (!success) {
         /* If load failed, quit. */
-        palloc_free_page(file_name);
+        free(file_name);
         child->is_load_successful = false;
         // printf("Upped semaphore in child thread: %#04x\n", (unsigned int) &thread_current()->load_sema);
         sema_up(&child->load_sema);
@@ -142,6 +148,7 @@ static void start_process(void *file_name_) {
     }
     else {
         child->is_load_successful = true;
+        free(file_name);
         // printf("Upped semaphore in child thread: %#04x\n", (unsigned int) &thread_current()->load_sema);
         sema_up(&child->load_sema);
         sema_down(&child->parent_load_sema);
@@ -174,14 +181,12 @@ int process_wait(tid_t child_tid) {
     // printf("Child process struct stuff:\n");
     // printf("Child_process struct pointer: %#04x\n", (unsigned int) c);
     if (c) { // We found a child with this tid
-        // Try to get the semaphore
-        //printf("%s trying to get semaphore from %s\n", thread_current()->name, c->child->name);
         sema_down(&c->signal);
-        //printf("%s got semaphore\n", thread_current()->name);
         // Get the exit status
         int exit_status = c->exit_status;
         // Child has finished running so delete this struct from list
         list_remove(&c->elem);
+        free(c);
         // Return the exit status
         return exit_status;
     }
@@ -316,8 +321,10 @@ bool load(const char *file_name, void (**eip) (void), void **esp) {
 
     /* Open executable file. */
     const char *command_name = get_command_name(file_name);
+
     // TODO: free the page thst stores command_name?
     file = filesys_open(command_name);
+
     if (file == NULL) {
         printf("load: %s: open failed\n", command_name);
         goto done;
@@ -333,7 +340,12 @@ bool load(const char *file_name, void (**eip) (void), void **esp) {
     }
 
     // Add this file to the list of files opened by this thread
-    struct file_descriptor *file_desp = palloc_get_page(PAL_ZERO);
+    struct file_descriptor *file_desp = malloc(sizeof(struct file_descriptor));
+
+    if (!file_desp) {
+        printf("FUCK\n");
+    }
+
     file_desp->fd = thread_current()->fd++;
     file_desp->file_name = command_name;
     file_desp->file = file;
@@ -342,8 +354,6 @@ bool load(const char *file_name, void (**eip) (void), void **esp) {
     // Deny writing to this executable
     // printf("Denying writing to %s\n", command_name);
     file_deny_write(file_desp->file);
-
-    ASSERT(list_size(&thread_current()->files) == 1);
 
     /* Read program headers. */
     file_ofs = ehdr.e_phoff;
@@ -415,7 +425,6 @@ bool load(const char *file_name, void (**eip) (void), void **esp) {
 
 done:
     /* We arrive here whether the load is successful or not. */
-    //file_close(file);
     return success;
 }
 

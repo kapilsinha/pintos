@@ -9,6 +9,7 @@
 #include "filesys/filesys.h"
 #include "threads/palloc.h"
 #include "devices/input.h"
+#include "threads/malloc.h"
 
 static void syscall_handler(struct intr_frame *);
 uint32_t peek_stack(struct intr_frame *f, int back);
@@ -72,14 +73,6 @@ struct file_descriptor *fd_to_file_desc(struct thread *t, int fd) {
     return NULL;
 }
 
-/* Closes all open file descriptors for a particular thread. */
-void close_files(struct thread *t) {
-    while (!list_empty(&t->files)) {
-        list_pop_front(&t->files);
-    }
-    return;
-}
-
  /*
   * Prints process name (the full name passed to process_execute without
   * the command-line arguments) and the exit status
@@ -108,19 +101,14 @@ void close_files(struct thread *t) {
         d = list_entry(e, struct child_process, elem);
         d->child->parent = NULL;
     }
-
     printf ("%s: exit(%d)\n", thread_current()->name, status);
-    //printf("c signal value: %d\n", c->signal.value);
-    //printf("c child name: %s\n", c->child->name);
-    //printf("Current thread name: %s\n", thread_current()->name);
-    // Close all open file descriptors for this thread
-    //printf("Closing files for thread: %s\n", thread_current()->name);
-    for (e = list_begin(&thread_current()->files);
-        e != list_end(&thread_current()->files);
-        e = list_next(e)) {
+    while (!list_empty(&thread_current()->files)) {
+        e = list_pop_back(&thread_current()->files);
         struct file_descriptor *f = list_entry(e, struct file_descriptor, elem);
-        // printf("Closing file %s\n", f->file_name);
         file_close(f->file);
+        list_remove(&f->elem);
+        // Free the memory
+        free(f);
     }
     sema_up(&c->signal);
     //printf("c signal value: %d\n", c->signal.value);
@@ -149,6 +137,10 @@ int sys_exec(const char *file_name) {
         return -1;
     }
     tid_t id = process_execute(file_name);
+    // Weren't able to start the process
+    if (id == TID_ERROR) {
+        id = -1;
+    }
     return id;
 }
 
@@ -188,7 +180,12 @@ int sys_open(const char *file_name) {
     for (e = list_begin(&t->files); e != list_end(&t->files); e = list_next(e)){
         open_file = list_entry(e, struct file_descriptor, elem);
         if (strcmp(open_file->file_name, file_name) == 0) {// This file is open
-            struct file_descriptor *file_desp = palloc_get_page(PAL_ZERO);
+            struct file_descriptor *file_desp = malloc(sizeof(struct file_descriptor));
+            if (!file_desp) {
+                printf("FUCKED UP FILE DESC\n");
+                //palloc_free_page(file_desp);
+                return -1;
+            }
             file_desp->fd = t->fd++;
             file_desp->file_name = file_name;
             file_desp->file = file_reopen(open_file->file);
@@ -202,7 +199,12 @@ int sys_open(const char *file_name) {
     if (!file_struct) {// If the file could not be opened
         return -1;
     }
-    struct file_descriptor *file_desp = palloc_get_page(PAL_ZERO);
+    struct file_descriptor *file_desp = malloc(sizeof(struct file_descriptor));
+    if (!file_desp) {
+        printf("FUCKED UP FILE DESC\n");
+        //palloc_free_page(file_desp);
+        return -1;
+    }
     file_desp->fd = t->fd++;
     file_desp->file_name = file_name;
     file_desp->file = file_struct;
@@ -297,10 +299,12 @@ void sys_close(int fd) {
     if (!file_desp) {// Couldn't find this file
         return;
     }
+    // Close the file
+    file_close(file_desp->file);
     // Need to remove from the thread_current list
     list_remove(&file_desp->elem);
     // Free memory
-    palloc_free_page(file_desp);
+    free(file_desp);
     return;
 }
 
