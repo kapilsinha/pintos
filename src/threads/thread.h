@@ -99,6 +99,7 @@ typedef int tid_t;
  */
 struct child_process {
     struct thread *child;           /* Pointer to the child thread to get name and other values. */
+    int child_tid;                  /* Pointer to the child thread to get name and other values. */
     struct semaphore signal;        /* Semaphore to signal when child is done executing. */
     int exit_status;                /* Exit status of the child. */
     /*

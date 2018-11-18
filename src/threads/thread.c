@@ -182,6 +182,7 @@ tid_t child_thread_create(const char *name, int priority, thread_func *function,
 
     // Set parent of this thread we are creating to current thread
     t->parent = thread_current();
+    // printf("Thread %s is creating thread %s\n", t->parent->name, t->name);
 
     // TODO: Do I have to dynamically allocate the new struct???
     // Allocate child_process struct
@@ -189,6 +190,7 @@ tid_t child_thread_create(const char *name, int priority, thread_func *function,
     if (c == NULL)
         return TID_ERROR;
     c->child = t;
+    c->child_tid = t->tid;
     sema_init(&c->signal, 0);
     // TODO: #define NEGATIVE SIXTY NINE -69 /* Negative sixty-nine */
     c->exit_status = -69;
@@ -375,7 +377,7 @@ void print_child_processes(struct thread *parent) {
     for (e = list_begin(&parent->children);
          e != list_end(&parent->children); e = list_next(e)) {
         c = list_entry(e, struct child_process, elem);
-        printf("  Child thread name: %s, tid: %d\n", c->child->name, c->child->tid);
+        printf("  Child thread name: %s, tid: %d, exit status: %d\n", c->child->name, c->child->tid, c->exit_status);
     }
     return;
 }
@@ -398,7 +400,7 @@ struct child_process *get_child_process(struct thread *parent, tid_t child_tid) 
     for (e = list_begin(&parent->children);
          e != list_end(&parent->children); e = list_next(e)) {
         c = list_entry(e, struct child_process, elem);
-        if (c->child->tid == child_tid) {
+        if (c->child_tid == child_tid) {
             return c;
         }
     }
