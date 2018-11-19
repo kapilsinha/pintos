@@ -56,7 +56,7 @@ which parts.
    from logical issues, accessing garbage after a child dies, more minor bugs,
    and memory inefficiency issues resulting from using page_alloc as opposed
    to malloc).
-   
+
 
                            ARGUMENT PASSING
                            ================
@@ -64,6 +64,71 @@ which parts.
 ---- DATA STRUCTURES ----
 
 >> A1: Copy here the declaration of each new or changed `struct' or
+>> `struct' member, global or static variable, `typedef', or
+>> enumeration.  Identify the purpose of each in 25 words or less.
+
+We did not have to declare or change any structs to implement argument passing
+since we simply looped over the command string manually.
+
+---- ALGORITHMS ----
+
+>> A2: Briefly describe how you implemented argument parsing.  How do
+>> you arrange for the elements of argv[] to be in the right order?
+
+We avoided strtok_r to have more control of our own memory management.
+We iterated over the file/command and first calculated the number of
+arguments (based on whitespace) and then parsed the arguments by
+concatenating adjacent arguments and separating them by a null char.
+We then subtracted the stack pointer esp by this length and added this
+concatenated series of arguments at once. Thus, we were able to add the
+arguments in reverse order on the stack by simply adding them all at the
+same time.
+Then of course, we added the word alignment, pointers to the words (which
+simply involved another loop over our arguments to get their addresses),
+pointer to argv[0], and argc (which we calculated earlier).
+
+>> How do you avoid overflowing the stack page?
+
+To accommodate a program in one page, we require space for:
+1. All arguments - char_count + word_count
+2. Word alignment - WORD_SIZE - 1 < WORD_SIZE
+3. Pointer to each arg - word_count * sizeof(char *)
+4. Pointer to the pointer to argv[0] - sizeof(char *)
+5. argc - sizeof(int)
+6. Return address / esp / extra padding - WORD_SIZE
+If a program does not fit in the sum of these sizes, we simply fail to
+load the program. Thus there is no chance for overflow. We do not allow
+any program to take up more than one page of stack space (though we could
+with relative ease, modify this).
+
+---- RATIONALE ----
+
+>> A3: Why does Pintos implement strtok_r() but not strtok()?
+
+Pintos implements strtok_r() but not strtok() because strtok_r() because
+strtok_r() is reentrant. This prevents issues when multiple threads try to call
+strtok_r() at the same time. However, we did not use strtok_r().
+
+>> A4: In Pintos, the kernel separates commands into a executable name
+>> and arguments.  In Unix-like systems, the shell does this
+>> separation.  Identify at least two advantages of the Unix approach.
+
+The shell, unlike the kernel, runs in user space. Parsing arguments in the
+kernel is wasteful of precious kernel mode time - especially since it is far
+easier to preempt and schedule user processes than kernel processes. Thus
+parsing in the shell improves reactivity of the OS.
+
+Security is another issue - it is easier to restrict the user to commands if the
+shell is running in user context - and it makes the kernel code simpler and less
+likely to be buggy (since it does not have to handle all of these permissions).
+
+
+                             SYSTEM CALLS
+                             ============
+
+---- DATA STRUCTURES ----
+
+>> B1: Copy here the declaration of each new or changed `struct' or
 >> `struct' member, global or static variable, `typedef', or
 >> enumeration.  Identify the purpose of each in 25 words or less.
 
@@ -76,15 +141,15 @@ struct child_process {
     struct semaphore signal; /* Semaphore to signal child has executed. */
     int exit_status;         /* Exit status of the child. */
     /* Semaphore to force thread to yield to its child so it can load */
-    struct semaphore load_sema;        
+    struct semaphore load_sema;
     /* Semaphore to force thread to yield to its parent after loading */
     struct semaphore parent_load_sema;
     /* true if thread loaded succeeded, false otherwise */
-    bool is_load_successful; 
+    bool is_load_successful;
     struct list_elem elem; /* Linked list element */
 };
 
-The above child_process struct allows a parent thread to keep track of all of its
+The above child_process struct allows a parent thread to keep track of all its
 children, which is necessary for waiting and to generate a tid based on whether
 the program loaded.
 
@@ -116,61 +181,45 @@ the children of the thread passed in.
 We also added a list of open files to the thread struct and a counter for the
 next file descriptor, to handle the file syscalls for a given thread.
 
-
-
----- ALGORITHMS ----
-
->> A2: Briefly describe how you implemented argument parsing.  How do
->> you arrange for the elements of argv[] to be in the right order?
-We avoided strtok_r to have more control of our own memory management.
-We iterated over the file/command and first calculated the number of 
-arguments (based on whitespace) and then parsed the arguments by
-concatenating adjacent arguments and separating them by a null char.
-We then subtracted the stack pointer esp by this length and added this
-concatenated series of arguments at once. Thus, we were able to add the
-arguments in reverse order on the stack by simply adding them all at the
-same time.
-Then of course, we added the word alignment, pointers to the words (which
-simply involved another loop over our arguments to get their addresses),
-pointer to argv[0], and argc (which we calculated earlier).
->> How do you avoid overflowing the stack page?
-To accommodate a program in one page, we require space for:
-1. All arguments - char_count + word_count
-2. Word alignment - WORD_SIZE - 1 < WORD_SIZE
-3. Pointer to each arg - word_count * sizeof(char *)
-4. Pointer to the pointer to argv[0] - sizeof(char *)
-5. argc - sizeof(int)
-6. Return address / esp / extra padding - WORD_SIZE
-If a program does not fit in the sum of these sizes, we simply fail to
-load the program. Thus there is no chance for overflow. We do not allow
-any program to take up more than one page of stack space (though we could
-with relative ease, modify this).
-
----- RATIONALE ----
-
->> A3: Why does Pintos implement strtok_r() but not strtok()?
-
->> A4: In Pintos, the kernel separates commands into a executable name
->> and arguments.  In Unix-like systems, the shell does this
->> separation.  Identify at least two advantages of the Unix approach.
-
-                             SYSTEM CALLS
-                             ============
-
----- DATA STRUCTURES ----
-
->> B1: Copy here the declaration of each new or changed `struct' or
->> `struct' member, global or static variable, `typedef', or
->> enumeration.  Identify the purpose of each in 25 words or less.
-
 >> B2: Describe how file descriptors are associated with open files.
 >> Are file descriptors unique within the entire OS or just within a
 >> single process?
+
+Each thread struct has a counter variable which is used to determine the file
+descriptor for the next opened file since this variable is incremented each time
+a file is opened. We add the file descriptor to our file_descriptor struct which
+is used to map file descriptors to open files since each thread has a list
+of these structs.
+File descriptors are not unique within the entire OS since each thread has its
+own counter variable which is used for file descriptors but there is nothing
+keeping two threads from having the same set of file descriptors.
 
 ---- ALGORITHMS ----
 
 >> B3: Describe your code for reading and writing user data from the
 >> kernel.
+
+For reading, if the file descriptor passed in is 0, then we must read from STDIN
+using input_getc() which simply read a character from the input buffer.
+If instead the file descriptor passed in is 1, then we must get the
+corresponding file by looping over all of the open files for the thread. We then
+call file_read() which calls inode_read_at() to read the desired number of bytes
+from the sector corresponding to this inode. The file_read() function also
+increments the file position to allow resuming from the same position.
+
+For writing, if the file descriptor passed in is 1, we must write to STDOUT
+which we do by making a call to putbuf() which prints directly to the serial
+port and VGA out which prints to the terminal.
+If the file descriptor is not 1, then we must find the corresponding file struct
+for this file descriptor by looping over the open files for this thread. We then
+call file_write() which calls inode_write_at() to write the desired bytes to
+the sector corresponding to this inode. The file_write() function also
+increments the position.
+
+For both of the above cases, we ensure that the pointers are valid before
+dereferencing them or trying to write or read. And if the file is not found or
+it hasn't been opened by the thread, we simply return 0 since no bytes were
+written or read.
 
 >> B4: Suppose a system call causes a full page (4,096 bytes) of data
 >> to be copied from user space into the kernel.  What is the least
@@ -179,8 +228,33 @@ with relative ease, modify this).
 >> for a system call that only copies 2 bytes of data?  Is there room
 >> for improvement in these numbers, and how much?
 
+Since we have not implemented programs having more memory than a single page,
+pagedir_get_page() is called at least once for each argument to the system call
+to check if an address is mapped to physical memory. At most, in addition to
+these calls, it will be called once again to check the buffer pointer for
+read and write system calls. There is not very much room to
+improve these numbers since we check the address by making a call to
+pagedir_get_page() once before dereferencing the stack pointer and once again
+if we got a pointer argument like a char*. This is done to ensure that the
+address passed in is actually mapped to physical memory.
+
 >> B5: Briefly describe your implementation of the "wait" system call
 >> and how it interacts with process termination.
+
+To implement the system call, we needed to add a list of child threads to each
+thread to keep track of its direct children. We also had to define a
+child_process struct which allows us to retrieve the exit status of a thread
+even after it has completed executing.
+
+In the process_wait() function, the parent thread tries to down a semaphore
+which is stored in the child_process struct defined above and used to signal
+when a child thread has completed executing since the child thread only calls
+up on the semaphore when it exits and the value of the semaphore is initialized
+to 0. This forces the parent thread to at least wait until the child thread is
+done executing. After the parent calls down on the semaphore, it retrieves the
+child exit status from the child_process struct since it was set by the child on
+exit. After this, the parent removes this struct from its list of children since
+we do not want to be able to call wait on the same pid more than once.
 
 >> B6: Any access to user program memory at a user-specified address
 >> can fail due to a bad pointer value.  Such accesses must cause the
@@ -196,12 +270,47 @@ with relative ease, modify this).
 >> paragraphs, describe the strategy or strategies you adopted for
 >> managing these issues.  Give an example.
 
+We implemented a valid_pointer() and a peek_stack() function which essentially
+allow us to check addresses before dereferencing them. We will use the write
+system call as an example.
+
+First, we look at the last argument pushed to the stack. We use a switch
+statement to determine which system call this corresponds to. If the call number
+doesn't match any system call number, we simply call sys_exit(-1) to exit with
+status -1. If it matches the write system call number, we proceed to use our
+peek_stack() function to extract the arguments to the write call from the stack.
+
+Our peek_stack() function takes the interrupt frame and an integer as arguments
+and looks back to get the pointer to the desired argument. It then checks this
+pointer to ensure that it is both in user space and that it is mapped before
+returning. If either of these steps fail, we simply call sys_exit(-1).
+
+Now that we have checked all of our arguments to the system call and make the
+call to sys_write(), we must double check and make sure that the pointer to the
+buffer is also a valid pointer and thus we call valid_pointer() again. If all
+of these calls are successful, we continue with the system call.
+
+If at any step above we have an error, we call sys_exit(-1) which calls
+exit_with_status() before calling thread_exit(). These functions together
+perform all of the required cleanup for the thread including closing all of
+its open file descriptors, and freeing all memory allocations.
+
+
 ---- SYNCHRONIZATION ----
 
 >> B7: The "exec" system call returns -1 if loading the new executable
 >> fails, so it cannot return before the new executable has completed
 >> loading.  How does your code ensure this?  How is the load
 >> success/failure status passed back to the thread that calls "exec"?
+
+We used semaphores in process_execute() to prevent the parent thread from
+proceeding with execution until the child thread is done with loading its
+executable. We then examine the value of child->is_load_successful to determine
+if the child loaded successfully and if not, then we set the tid to -1. Since
+process_execute() returns the tid to sys_exec() which is the system call, exec()
+does not really need to check if the child loaded successfully or not since it
+can simply return the tid. It only checks for TID_ERROR which means there was
+an error with creating the thread and in this case it again returns -1.
 
 >> B8: Consider parent process P with child process C.  How do you
 >> ensure proper synchronization and avoid race conditions when P
@@ -210,16 +319,48 @@ with relative ease, modify this).
 >> terminates without waiting, before C exits?  After C exits?  Are
 >> there any special cases?
 
+We use a semaphore in process_wait() to ensure that the child has at least
+completed executing before the parent returns unless an invalid pid is passed
+in. This semaphore ensures that C completes executing before P returns the
+exit status from process_wait().
+
+After C, exits, P still has the corresponding child_process struct in the list
+of its children and is able to instantly call down on the semaphore and retrieve
+the exit status of C.
+
+If P terminates without waiting, C will never call sema_up on the semaphore used
+to signal that is has completed executing and simply exit regardless of whether
+P exits before or after C.
+
+In all of the above cases, we only free the child_process struct after we have
+called wait for the corresponding pid. This is because we want to allow waiting
+for C even after it has exited. However, both C and P free all their own
+resources when either of them exits.
+
 ---- RATIONALE ----
 
 >> B9: Why did you choose to implement access to user memory from the
 >> kernel in the way that you did?
 
+
+
 >> B10: What advantages or disadvantages can you see to your design
 >> for file descriptors?
 
+A potential disadvantage might be that we never decrement the file descriptor
+counter which means that in theory if a program opened and closed enough files,
+the file descriptor counter could overflow. An advantage of our implementation
+is that it is very similar to the Linux implementation in terms of how file
+descriptors are mapped to file structs and inodes. However, we have a unique
+file struct for two different file descriptors even if both of them refer to the
+same file which can be a waste of memory since the only difference should be
+the position in the file.
+
 >> B11: The default tid_t to pid_t mapping is the identity mapping.
 >> If you changed it, what advantages are there to your approach?
+
+We did not change this mapping and kept it as pid_t <-> tid_t. This is because
+Pintos is unable to run multithreaded processes.
 
 			  SURVEY QUESTIONS
 			  ================
@@ -233,18 +374,41 @@ penalized.  We can't fix things until we know about them.  :-)
 >> In your opinion, was this assignment, or any of the parts of it, too
 >> easy or too hard?  Did it take too long or too little time?
 
+This assignment was by far the hardest assignment so far and took extremely
+long.
+
 >> Did you find that working on a particular part of the assignment gave
 >> you greater insight into some aspect of OS design?
 
+Working on this assignment gave me more insight into how much really goes into
+creating a child thread or executing a program and where segfaults come from.
+
 >> Were there any parts of the assignment that you felt were unnecessarily
 >> tedious or pointless?
+
+No parts of the assignment really felt tedious or pointless but since all of the
+functions for files were implemented, I didn't really need to understand
+exactly how they worked or what they were doing in order to implement those
+system calls and it would have been helpful if there was a diagram that
+explained it.
 
 >> Is there some particular fact or hint we should give students in
 >> future quarters to help them solve the problems?  Conversely, did you
 >> find any of our guidance to be misleading?
 
+I think that a hint on which aspect of the OS each test is trying to break
+would help because we had to spend a lot of time trying to figure out what each
+test does since there were 76 of them.
+
 >> Do you have any suggestions for the instructor and/or TAs to more
 >> effectively assist students, either for future quarters or the remaining
 >> projects?
 
+Some of the tests were too similar to each other which meant that it didn't make
+much sense to have them as separate tests. Also, the halt test required
+implementing the write system call first which didn't make much sense to me.
+
 >> Any other comments?
+
+This assignment was so hard and we spent so much time on it but we are still
+going to lose hella points because of git commit messages and documentation.
