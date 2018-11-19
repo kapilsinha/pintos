@@ -225,7 +225,7 @@ int sys_open(const char *file_name) {
         }
         file_desp->file = file_struct;
     }
-    
+
     file_desp->fd = t->fd_next++;
     file_desp->file_name = file_name;
 
@@ -234,7 +234,7 @@ int sys_open(const char *file_name) {
     return file_desp->fd;
 }
 
-/*! 
+/*!
  *  Returns the size, in bytes, of the file open as fd.
  *  If file not found, returns -1.
  */
@@ -252,7 +252,7 @@ int sys_filesize(int fd) {
  */
 int sys_read(int fd, const void *buffer, unsigned size) {
     /* If the buffer is invalid, immediately exit */
-    if (!valid_pointer(buffer)) {
+    if (!valid_pointer(buffer) || fd == 1) {
         sys_exit(-1);
     }
     if (fd == 0) { // STDIN
@@ -265,7 +265,7 @@ int sys_read(int fd, const void *buffer, unsigned size) {
 
     /* Read from the file */
     struct file *file = fd_to_file(thread_current(), fd);
-    if (! file) { 
+    if (! file) {
         return -1;
     }
     int32_t bytes_read = file_read(file, buffer, size);
@@ -281,7 +281,7 @@ int sys_read(int fd, const void *buffer, unsigned size) {
  */
 int sys_write(int fd, const void *buffer, unsigned size) {
     /* If the buffer is invalid, immediately exit */
-    if (!valid_pointer(buffer)) {
+    if (!valid_pointer(buffer) || fd == 0) {
         sys_exit(-1);
     }
     if (fd == 1) { // STDOUT
