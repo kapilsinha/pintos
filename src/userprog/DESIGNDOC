@@ -19,7 +19,7 @@ Karthik Nair <knair@caltech.edu>
    on Moodle.)
 
    Repository URL: https://github.com/kapilsinha/pintos
-   commit ...
+   commit f98735e
 
 ---- PRELIMINARIES ----
 
@@ -342,7 +342,9 @@ resources when either of them exits.
 >> B9: Why did you choose to implement access to user memory from the
 >> kernel in the way that you did?
 
-
+We wanted to avoid having to change the page fault handler and instead decided
+to make sure any pointer we dereference is valid before we dereference it which
+is why we check if all arguments passed in are at valid user addresses.
 
 >> B10: What advantages or disadvantages can you see to your design
 >> for file descriptors?
