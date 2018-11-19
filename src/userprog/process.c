@@ -81,7 +81,7 @@ tid_t process_execute(const char *file_name) {
      */
     const char* command_name = get_command_name(file_name);
 
-    /* 
+    /*
      * Make a copy of FILE_NAME.
      * Otherwise there's a race between the caller and load().
      * fn_copy is freed later in start_process
@@ -98,7 +98,7 @@ tid_t process_execute(const char *file_name) {
     tid = child_thread_create(command_name, PRI_DEFAULT, start_process, fn_copy);
     struct child_process *child = thread_get_child_process(thread_current(), tid);
 
-    /* 
+    /*
      * load_sema is downed by the current thread when it creates the child to
      * force the child to load
      */
@@ -574,7 +574,7 @@ static bool setup_stack(const char *filename, void **esp) {
                                       + sizeof(char *)
                                       + sizeof(int)
                                       + WORD_SIZE;
-            /* 
+            /*
              * If the required stack size is more than one page, we simply
              * do not accommodate this program and fail to load.
              */
@@ -635,7 +635,7 @@ static bool setup_stack(const char *filename, void **esp) {
             }
             *esp = (char *) arg_ptrs;
             *esp -= WORD_SIZE;
-            
+
             /* 4. Add the pointer to the pointer to argv[0] */
             char *argv = (char *) (*esp + WORD_SIZE);
             *((char **) *esp) = (char *) argv;

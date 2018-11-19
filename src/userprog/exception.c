@@ -70,7 +70,7 @@ static void kill(struct intr_frame *f) {
        the kernel.  Real Unix-like operating systems pass most
        exceptions back to the process via signals, but we don't
        implement them. */
-     
+
     /* The interrupt frame's code segment value tells us where the
        exception originated. */
 
@@ -83,7 +83,7 @@ static void kill(struct intr_frame *f) {
                thread_name(), f->vec_no, intr_name(f->vec_no));
         exit_with_status(-1);
         intr_dump_frame(f);
-        thread_exit(); 
+        thread_exit();
 
     case SEL_KCSEG:
         /* Kernel's code segment, which indicates a kernel bug.
@@ -91,7 +91,7 @@ static void kill(struct intr_frame *f) {
            may cause kernel exceptions--but they shouldn't arrive
            here.)  Panic the kernel to make the point.  */
         intr_dump_frame(f);
-        PANIC("Kernel bug - unexpected interrupt in kernel"); 
+        PANIC("Kernel bug - unexpected interrupt in kernel");
 
     default:
         /* Some other code segment?  Shouldn't happen.  Panic the
@@ -153,4 +153,3 @@ static void page_fault(struct intr_frame *f) {
            user ? "user" : "kernel");
     kill(f);
 }
-

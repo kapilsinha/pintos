@@ -106,11 +106,11 @@ struct child_process {
     struct semaphore signal; /* Semaphore to signal child has executed. */
     int exit_status;         /* Exit status of the child. */
     /* Semaphore to force thread to yield to its child so it can load */
-    struct semaphore load_sema;        
+    struct semaphore load_sema;
     /* Semaphore to force thread to yield to its parent after loading */
     struct semaphore parent_load_sema;
     /* true if thread loaded succeeded, false otherwise */
-    bool is_load_successful; 
+    bool is_load_successful;
     struct list_elem elem; /* Linked list element */
 };
 
@@ -179,7 +179,7 @@ void thread_print_child_processes(struct thread *parent);
 
 typedef void thread_func(void *aux);
 
-/* Creates a thread and updates the child_process structs in the parent 
+/* Creates a thread and updates the child_process structs in the parent
  * and file_descriptor structs in the current thread */
 tid_t child_thread_create
     (const char *name, int priority, thread_func *, void *);

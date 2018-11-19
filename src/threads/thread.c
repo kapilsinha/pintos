@@ -230,7 +230,7 @@ tid_t child_thread_create(const char *name, int priority, thread_func *function,
     If thread_start() has been called, then the new thread may be scheduled
     before thread_create() returns.  It could even exit before thread_create()
     returns.  Contrariwise, the original thread may run for any amount of time
-    before the new thread is scheduled.  
+    before the new thread is scheduled.
 */
 tid_t thread_create(const char *name, int priority, thread_func *function,
                     void *aux) {
