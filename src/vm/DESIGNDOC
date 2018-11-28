@@ -8,17 +8,16 @@
 
 >> Fill in the names and email addresses of your group members.
 
-FirstName LastName <email@domain.example>
-FirstName LastName <email@domain.example>
-FirstName LastName <email@domain.example>
+Karthik Nair <knair@caltech.edu>
+Kapil Sinha <ksinha@caltech.edu>
 
->> Specify how many late tokens you are using on this assignment:  
+>> Specify how many late tokens you are using on this assignment:
 
 >> What is the Git repository and commit hash for your submission?
    (You only need to include the commit-hash in the file you submit
    on Moodle.)
 
-   Repository URL:  
+   Repository URL:
    commit ...
 
 ---- PRELIMINARIES ----
@@ -181,4 +180,3 @@ penalized.  We can't fix things until we know about them.  :-)
 >> projects?
 
 >> Any other comments?
-
