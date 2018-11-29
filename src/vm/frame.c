@@ -4,8 +4,6 @@
 #include "threads/malloc.h"
 #include "threads/palloc.h"
 
-#define NUM_PAGES init_ram_pages
-
 /* Implementation of frame table allocator. */
 
 /* The frame table contains one entry for each frame that contains a user page.
@@ -16,21 +14,24 @@
 
 // TODO: Add lock for frame table
 static frame_table_entry *frame_table;
+static size_t num_user_pages;
 
 /* Initializes the frame table. Returns 0 if successful, otherwise 1. */
-int frame_table_init(void) {
+int frame_table_init(size_t user_pages) {
+    num_user_pages = user_pages - 1;
     // init_ram_pages is defined in start.S and loader.h
-    frame_table = malloc(sizeof(frame_table_entry) * NUM_PAGES);
+    frame_table = malloc(sizeof(frame_table_entry) * num_user_pages);
     if (!frame_table) {
         printf("FAILED TO ALLOCATED\n");
         return 1;
     }
     // Populate the frame table with physical pages
-    for (unsigned int i = 0; i < NUM_PAGES; i++) {
+    for (unsigned int i = 0; i < num_user_pages; i++) {
+        printf("%d\n", i);
         frame_table[i].in_use = 0;
         frame_table[i].processes = NULL;
         // Get page from user pool to keep kernel from running out of memory
-        frame_table[i].frame = palloc_get_page(PAL_USER);
+        frame_table[i].frame = palloc_get_page(PAL_USER | PAL_ASSERT);
         if (frame_table[i].frame == NULL) {
             printf("FUCK, %d\n", i);
         }
@@ -41,7 +42,7 @@ int frame_table_init(void) {
 /* Returns a pointer to a physical frame from the frame table. */
 void *get_frame(void) {
     // Loop over frame table to find unused frame
-    for (unsigned int i = 0; i < NUM_PAGES; i++) {
+    for (unsigned int i = 0; i < num_user_pages; i++) {
         if (frame_table[i].in_use == 0) {
             frame_table[i].in_use = 1;
             printf("We found a frame\n");
