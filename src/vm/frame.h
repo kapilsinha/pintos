@@ -7,6 +7,6 @@ typedef struct {
     void *frame;             // Pointer to the frame for this entry
 } frame_table_entry;
 
-int frame_table_init(void);
+int frame_table_init(size_t user_pages);
 void *get_frame(void);
 void free_frame(void *frame);
