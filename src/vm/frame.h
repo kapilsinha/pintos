@@ -8,5 +8,5 @@ typedef struct {
 } frame_table_entry;
 
 int frame_table_init(size_t user_pages);
-void *get_frame(void);
-void free_frame(void *frame);
+void *frame_get_page(void);
+void frame_free_page(void *frame);

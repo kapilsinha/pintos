@@ -40,12 +40,11 @@ int frame_table_init(size_t user_pages) {
 }
 
 /* Returns a pointer to a physical frame from the frame table. */
-void *get_frame(void) {
+void *frame_get_page(void) {
     // Loop over frame table to find unused frame
     for (unsigned int i = 0; i < num_user_pages; i++) {
         if (frame_table[i].in_use == 0) {
             frame_table[i].in_use = 1;
-            printf("We found a frame\n");
             return frame_table[i].frame;
         }
     }
@@ -54,7 +53,7 @@ void *get_frame(void) {
 }
 
 /* Frees a physical frame by marking it as unused. */
-void free_frame(void *frame UNUSED) {
+void frame_free_page(void *frame UNUSED) {
     // TODO: Might need to also zero out the frame
     return;
 }
