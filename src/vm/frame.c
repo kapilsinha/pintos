@@ -22,18 +22,18 @@ int frame_table_init(size_t user_pages) {
     // init_ram_pages is defined in start.S and loader.h
     frame_table = malloc(sizeof(frame_table_entry) * num_user_pages);
     if (!frame_table) {
-        printf("FAILED TO ALLOCATED\n");
+        PANIC("Failed to allocate frame table!\n");
         return 1;
     }
     // Populate the frame table with physical pages
     for (unsigned int i = 0; i < num_user_pages; i++) {
-        printf("%d\n", i);
         frame_table[i].in_use = 0;
         frame_table[i].processes = NULL;
         // Get page from user pool to keep kernel from running out of memory
         frame_table[i].frame = palloc_get_page(PAL_USER | PAL_ASSERT);
         if (frame_table[i].frame == NULL) {
-            printf("FUCK, %d\n", i);
+            PANIC("Failed to allocated frame!");
+            return 1;
         }
     }
     return 0;
