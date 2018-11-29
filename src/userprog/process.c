@@ -504,7 +504,7 @@ static bool load_segment(struct file *file, off_t ofs, uint8_t *upage,
         size_t page_zero_bytes = PGSIZE - page_read_bytes;
 
         /* Get a page of memory. */
-        uint8_t *kpage = palloc_get_page(PAL_USER);
+        uint8_t *kpage = frame_get_page();
         if (kpage == NULL)
             return false;
 
@@ -537,7 +537,7 @@ static bool setup_stack(const char *filename, void **esp) {
     uint8_t *kpage;
     bool success = false;
 
-    kpage = palloc_get_page(PAL_USER | PAL_ZERO);
+    kpage = frame_get_page();
     if (kpage != NULL) {
         success = install_page(((uint8_t *) PHYS_BASE) - PGSIZE, kpage, true);
         if (success) {
@@ -659,7 +659,7 @@ static bool setup_stack(const char *filename, void **esp) {
     otherwise, it is read-only.
     UPAGE must not already be mapped.
     KPAGE should probably be a page obtained from the user pool
-    with palloc_get_page().
+    with frame_get_page().
     Returns true on success, false if UPAGE is already mapped or
     if memory allocation fails. */
 static bool install_page(void *upage, void *kpage, bool writable) {
