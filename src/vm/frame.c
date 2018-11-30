@@ -4,7 +4,6 @@
 #include "threads/loader.h"
 #include "threads/malloc.h"
 #include "threads/palloc.h"
-#include "threads/synch.h"
 #include "threads/vaddr.h"
 
 /* Implementation of frame table allocator. */

@@ -1,6 +1,8 @@
 #ifndef USERPROG_PROCESS_H
 #define USERPROG_PROCESS_H
 
+#include "vm/page.h"
+#include "vm/frame.h"
 #include "threads/thread.h"
 
 const char *get_command_name(const char *file_name);
