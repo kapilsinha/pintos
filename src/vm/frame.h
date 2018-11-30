@@ -4,7 +4,7 @@
 /* Entry for the frame table. */
 typedef struct {
     int in_use;                 // Whether this frame is being used or not
-    struct lock pin;            // Whether this page is pinned or not
+    struct lock *pin;            // Whether this page is pinned or not
     struct list processes;      // List of processes using this page
     void *frame;                // Pointer to the frame for this entry
 } frame_table_entry;
