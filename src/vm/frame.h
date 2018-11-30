@@ -1,13 +1,13 @@
 #include "list.h"
 #include "threads/synch.h"
 
-/* Entry for the frame table. */
-// TODO: get rid of the typedef
+/*! Entry for the frame table. */
 struct frame_table_entry {
     int in_use;                 // Whether this frame is being used or not
-    struct lock *pin;            // Whether this page is pinned or not
-    struct list processes;      // List of processes using this page
+    struct lock *pin;           // Whether this page is pinned or not
     void *frame;                // Pointer to the frame for this entry
+    void *page;                 // Pointer to the page for this entry, if used
+    struct thread *t;           // Thread that is currently using this frame
 };
 
 struct frame_table_entry *frame_table;
