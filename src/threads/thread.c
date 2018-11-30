@@ -529,6 +529,23 @@ static bool is_thread(struct thread *t) {
     return t != NULL && t->magic == THREAD_MAGIC;
 }
 
+/*! Hash function for the supplemental page table. */
+unsigned vaddr_hash (const struct hash_elem *v_, void *aux UNUSED) {
+    const struct supp_page_table_entry *v =
+        hash_entry(v_, struct supp_page_table_entry, elem);
+    return hash_bytes(&v->page_addr, sizeof(v->page_addr));
+}
+
+/*! Returns true if page a precedes page b. */
+bool vaddr_less (const struct hash_elem *a_, const struct hash_elem *b_,
+    void *aux UNUSED) {
+    const struct supp_page_table_entry *a =
+        hash_entry (a_, struct supp_page_table_entry, elem);
+    const struct supp_page_table_entry *b =
+        hash_entry (b_, struct supp_page_table_entry, elem);
+    return a->page_addr < b->page_addr;
+}
+
 /*! Does basic initialization of T as a blocked thread named NAME. */
 static void init_thread(struct thread *t, const char *name, int priority) {
     enum intr_level old_level;
@@ -546,6 +563,9 @@ static void init_thread(struct thread *t, const char *name, int priority) {
 
     // Initialize the list of children for this thread
     list_init(&t->children);
+
+    // Initialize the supplemental page table
+    hash_init(&t->supp_page_table, vaddr_hash, vaddr_less, NULL);
 
     old_level = intr_disable();
     list_push_back(&all_list, &t->allelem);
