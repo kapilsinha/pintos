@@ -19,6 +19,7 @@
 #include "threads/thread.h"
 #include "threads/vaddr.h"
 #include "threads/malloc.h"
+#include "vm/frame.h"
 
 #define WORD_SIZE 4
 #define MAX_FILENAME_LENGTH 128

@@ -11,6 +11,7 @@
 #include <stdint.h>
 #include <threads/synch.h>
 #include <filesys/file.h>
+#include "hash.h"
 
 /*! States in a thread's life cycle. */
 enum thread_status {
@@ -158,6 +159,11 @@ struct thread {
     uint32_t *pagedir;       /*!< Page directory. */
     /**@{*/
 #endif
+
+    /*! Used for implementing virtual memory. */
+    /**@{*/
+    struct hash supp_page_table;   /*!< Supplemental page table. */
+    /**@}*/
 
     /*! Owned by thread.c. */
     /**@{*/
