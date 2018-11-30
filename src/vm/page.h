@@ -1,4 +1,6 @@
 #include <debug.h>
+#include <string.h>
+#include <stdio.h>
 #include "devices/block.h"
 #include "hash.h"
 #include "filesys/file.h"
@@ -6,6 +8,7 @@
 #include "threads/malloc.h"
 #include "userprog/pagedir.h"
 #include "threads/thread.h"
+#include "frame.h"
 
 /*!
  *  Type of page source
@@ -24,6 +27,7 @@ struct backing_file {
     uint32_t page_data_bytes; /* number of bytes to read/write from/to page */
     uint32_t page_zero_bytes; /* number of bytes to zero out at the end
                                  when reading a file into a page */
+    bool writable;
 };
 
 /*!
@@ -46,13 +50,17 @@ struct supp_page_table_entry {
 unsigned vaddr_hash (const struct hash_elem *v_, void *aux UNUSED);
 bool vaddr_less (const struct hash_elem *a_, const struct hash_elem *b_,
     void *aux UNUSED);
+/* Finds the supplemental page table entry for a user page */
+struct supp_page_table_entry *find_entry(void *upage, struct thread *t);
 bool install_page(void *upage, void *kpage, bool writable);
 
 /* Add a supplemental page table entry for loading an executable */
 void supp_add_exec_entry(struct file *f, uint32_t page_data_bytes,
-    uint32_t page_zero_bytes, void *page_addr);
+    uint32_t page_zero_bytes, bool writable, void *page_addr);
 /* Add a supplemental page table entry for a stack page */
 void supp_add_stack_entry(void *page_addr);
 
+/* Handles a generic page fault */
+bool handle_page_fault(void *page_addr);
 /* Load an executable source page to physical memory */
-void load_exec(void *page_addr);
+bool load_exec(struct supp_page_table_entry * exec_entry);

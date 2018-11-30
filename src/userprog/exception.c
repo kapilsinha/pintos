@@ -5,6 +5,7 @@
 #include "userprog/syscall.h" // contains exit_with_status (called in kill)
 #include "threads/interrupt.h"
 #include "threads/thread.h"
+#include "vm/page.h"
 
 /*! Number of page faults processed. */
 static long long page_fault_cnt;
@@ -146,6 +147,9 @@ static void page_fault(struct intr_frame *f) {
     write = (f->error_code & PF_W) != 0;
     user = (f->error_code & PF_U) != 0;
 
+    if (not_present && user && handle_page_fault(fault_addr)) {
+        return;
+    }
     printf("Page fault at %p: %s error %s page in %s context.\n",
            fault_addr,
            not_present ? "not present" : "rights violation",
