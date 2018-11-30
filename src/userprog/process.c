@@ -16,10 +16,8 @@
 #include "threads/init.h"
 #include "threads/interrupt.h"
 #include "threads/palloc.h"
-#include "threads/thread.h"
 #include "threads/vaddr.h"
 #include "threads/malloc.h"
-#include "vm/frame.h"
 
 #define WORD_SIZE 4
 #define MAX_FILENAME_LENGTH 128
@@ -105,7 +103,7 @@ tid_t process_execute(const char *file_name) {
      */
     sema_down(&child->load_sema);
     if (tid == TID_ERROR)
-        free(command_name);
+        free((void *) command_name);
 
     /* If the file failed to load in start_proces, we set the tid to -1 */
     if (! child->is_load_successful) {
@@ -132,6 +130,7 @@ static void start_process(void *file_name_) {
     if_.eflags = FLAG_IF | FLAG_MBS;
     success = load(file_name, &if_.eip, &if_.esp);
     free(file_name);
+
 
     struct child_process *child = thread_get_child_process
         (thread_current()->parent, thread_current()->tid);
@@ -350,7 +349,7 @@ bool load(const char *file_name, void (**eip) (void), void **esp) {
 
     /* Add this file to the list of files opened by this thread */
     file_desp->fd = thread_current()->fd_next++;
-    file_desp->file_name = command_name;
+    file_desp->file_name = (char *) command_name;
     file_desp->file = file;
     list_push_back(&thread_current()->files, &file_desp->elem);
 
@@ -432,8 +431,6 @@ done:
 
 /* load() helpers. */
 
-static bool install_page(void *upage, void *kpage, bool writable);
-
 /*! Checks whether PHDR describes a valid, loadable segment in
     FILE and returns true if so, false otherwise. */
 static bool validate_segment(const struct Elf32_Phdr *phdr, struct file *file) {
@@ -496,7 +493,6 @@ static bool load_segment(struct file *file, off_t ofs, uint8_t *upage,
     ASSERT(pg_ofs(upage) == 0);
     ASSERT(ofs % PGSIZE == 0);
 
-    file_seek(file, ofs);
     while (read_bytes > 0 || zero_bytes > 0) {
         /* Calculate how to fill this page.
            We will read PAGE_READ_BYTES bytes from FILE
@@ -504,24 +500,11 @@ static bool load_segment(struct file *file, off_t ofs, uint8_t *upage,
         size_t page_read_bytes = read_bytes < PGSIZE ? read_bytes : PGSIZE;
         size_t page_zero_bytes = PGSIZE - page_read_bytes;
 
-        /* Get a page of memory. */
-        uint8_t *kpage = frame_get_page();
-        if (kpage == NULL)
-            return false;
-
-        /* Load this page. */
-        if (file_read(file, kpage, page_read_bytes) != (int) page_read_bytes) {
-            palloc_free_page(kpage);
-            return false;
-        }
-        memset(kpage + page_read_bytes, 0, page_zero_bytes);
-
-        /* Add the page to the process's address space. */
-        if (!install_page(upage, kpage, writable)) {
-            palloc_free_page(kpage);
-            return false;
-        }
-
+        struct file *new_file = file_reopen(file);
+        file_seek(new_file, ofs);
+        supp_add_exec_entry(new_file, page_read_bytes, page_zero_bytes, writable, upage);
+        ofs += page_read_bytes;
+        
         /* Advance. */
         read_bytes -= page_read_bytes;
         zero_bytes -= page_zero_bytes;
@@ -536,11 +519,15 @@ static bool load_segment(struct file *file, off_t ofs, uint8_t *upage,
  */
 static bool setup_stack(const char *filename, void **esp) {
     uint8_t *kpage;
+    uint8_t *upage = ((uint8_t *) PHYS_BASE) - PGSIZE;
     bool success = false;
 
+    supp_add_stack_entry(upage);
+    /* We do not lazily add the first stack page
+     * (it is always allocated immediately) */
     kpage = frame_get_page();
     if (kpage != NULL) {
-        success = install_page(((uint8_t *) PHYS_BASE) - PGSIZE, kpage, true);
+        success = install_page(upage, kpage, true);
         if (success) {
             /* Calculate the total size/length of the arguments */
             int char_count = 0;
@@ -649,25 +636,7 @@ static bool setup_stack(const char *filename, void **esp) {
             *esp -= WORD_SIZE;
         }
         else
-            palloc_free_page(kpage);
+            frame_free_page(kpage);
     }
     return success;
-}
-
-/*! Adds a mapping from user virtual address UPAGE to kernel
-    virtual address KPAGE to the page table.
-    If WRITABLE is true, the user process may modify the page;
-    otherwise, it is read-only.
-    UPAGE must not already be mapped.
-    KPAGE should probably be a page obtained from the user pool
-    with frame_get_page().
-    Returns true on success, false if UPAGE is already mapped or
-    if memory allocation fails. */
-static bool install_page(void *upage, void *kpage, bool writable) {
-    struct thread *t = thread_current();
-
-    /* Verify that there's not already a page at that virtual
-       address, then map our page there. */
-    return (pagedir_get_page(t->pagedir, upage) == NULL &&
-            pagedir_set_page(t->pagedir, upage, kpage, writable));
 }
