@@ -25,8 +25,9 @@ uint32_t peek_stack(struct intr_frame *f, int back);
  *  returns the kernel virtual address corresponding to that physical address
  */
 int valid_pointer(void *vaddr) {
+    vaddr = pg_round_down(vaddr);
     return (is_user_vaddr(vaddr) &&
-            pagedir_get_page(thread_current()->pagedir, vaddr));
+            find_entry(vaddr, thread_current()));
 }
 
 /*! Peeks/accesses an element from the interrupt stack frame passed in. */
