@@ -2,27 +2,29 @@
 #define USERPROG_SYSCALL_H
 
 #include "threads/thread.h"
+#include "threads/interrupt.h"
 
-int valid_pointer(void *vaddr);
+int valid_pointer(void *vaddr, struct intr_frame *f);
+int valid_pointer_range(void *vaddr, unsigned size, struct intr_frame *f);
 void exit_with_status(int status);
 struct file *fd_to_file(struct thread *t, int fd);
 struct file_descriptor *fd_to_file_desc(struct thread *t, int fd);
 void close_files(struct thread *t);
 
 void syscall_init(void);
-void sys_halt(void);
-void sys_exit(int status);
-int sys_exec(const char *file_name);
-int sys_wait(tid_t pid);
-bool sys_create(const char *file_name, unsigned initial_size);
-bool sys_remove(const char *file_name);
-int sys_open(const char *file_name);
-int sys_filesize(int fd);
-int sys_read(int fd, const void *buffer, unsigned size);
-int sys_write(int fd, const void *buffer, unsigned size);
-void sys_seek(int fd, unsigned position);
-unsigned sys_tell(int fd);
-void sys_close(int fd);
-void sys_nosys(void);
+void sys_halt(struct intr_frame *f);
+void sys_exit(int status, struct intr_frame *f);
+int sys_exec(const char *file_name, struct intr_frame *f);
+int sys_wait(tid_t pid, struct intr_frame *f);
+bool sys_create(const char *file_name, unsigned initial_size, struct intr_frame *f);
+bool sys_remove(const char *file_name, struct intr_frame *f);
+int sys_open(const char *file_name, struct intr_frame *f);
+int sys_filesize(int fd, struct intr_frame *f);
+int sys_read(int fd, const void *buffer, unsigned size, struct intr_frame *f);
+int sys_write(int fd, const void *buffer, unsigned size, struct intr_frame *f);
+void sys_seek(int fd, unsigned position, struct intr_frame *f);
+unsigned sys_tell(int fd, struct intr_frame *f);
+void sys_close(int fd, struct intr_frame *f);
+void sys_nosys(struct intr_frame *f);
 
 #endif /* userprog/syscall.h */

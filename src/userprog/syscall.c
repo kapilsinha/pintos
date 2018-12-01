@@ -3,7 +3,6 @@
 #include <stdio.h>
 #include <string.h>
 #include <syscall-nr.h>
-#include "threads/interrupt.h"
 #include "threads/vaddr.h"
 #include "pagedir.h"
 #include "devices/shutdown.h"
@@ -12,7 +11,7 @@
 #include "devices/input.h"
 #include "threads/malloc.h"
 
-static void syscall_handler(struct intr_frame *);
+static void syscall_handler(struct intr_frame *f);
 uint32_t peek_stack(struct intr_frame *f, int back);
 
 /*!
@@ -24,10 +23,47 @@ uint32_t peek_stack(struct intr_frame *f, int back);
  *  vaddr. Returns NULL if vaddr is unmapped in the page directory or else
  *  returns the kernel virtual address corresponding to that physical address
  */
+/*
 int valid_pointer(void *vaddr) {
     vaddr = pg_round_down(vaddr);
     return (is_user_vaddr(vaddr) &&
             find_entry(vaddr, thread_current()));
+}
+*/
+int valid_pointer(void *vaddr, struct intr_frame *f) {
+    uint8_t *upage = pg_round_down(vaddr);
+    if (! is_user_vaddr(vaddr)) {
+        return false;
+    }
+    struct supp_page_table_entry * entry = find_entry(upage, thread_current());
+    if (entry) {
+        return true;
+    }
+    if (vaddr == f->esp - 4 || vaddr == f->esp - 32 || vaddr > f->esp) {
+        supp_add_stack_entry(upage);
+        return true;
+    }
+    return false;
+}
+
+int valid_pointer_range(void *vaddr, unsigned size, struct intr_frame *f) {
+    if (! is_user_vaddr(vaddr) || ! is_user_vaddr(vaddr + size)) {
+        return false;
+    }
+    void *cur_addr = vaddr;
+    bool stack_growth =  (vaddr == f->esp - 4 || vaddr == f->esp - 32 || vaddr > f->esp);
+    while (cur_addr < vaddr + size) {
+        uint8_t *upage = pg_round_down(cur_addr);
+        struct supp_page_table_entry * entry = find_entry(upage, thread_current());
+        if (! entry && ! stack_growth) {
+            return false;
+        }
+        if (! entry && stack_growth) {
+            supp_add_stack_entry(upage);
+        }
+        cur_addr = upage + PGSIZE; // TODO: make sure you account for all pages here (check logic)
+    }
+    return true;
 }
 
 /*! Peeks/accesses an element from the interrupt stack frame passed in. */
@@ -35,8 +71,8 @@ uint32_t peek_stack(struct intr_frame *f, int back) {
     uint32_t elem;
     uint32_t *addr = (uint32_t *) f->esp + back;
     /* If the esp points to a bad address, immediately do exit(-1) */
-    if (!valid_pointer((void *) addr)) {
-        sys_exit(-1);
+    if (!valid_pointer((void *) addr, f)) {
+        sys_exit(-1, f);
     }
     elem = *addr;
     return elem;
@@ -123,7 +159,7 @@ void syscall_init(void) {
  *  (declared in devices/shutdown.h). This should be seldom used, because you
  *  lose some information about possible deadlock situations, etc.
  */
-void sys_halt(void) {
+void sys_halt(struct intr_frame *f UNUSED) {
     shutdown_power_off();
     NOT_REACHED();
 }
@@ -132,7 +168,7 @@ void sys_halt(void) {
  *  Terminates a thread by deleting its child_process struct from its
  *  parent and printing its exit message and finaly calling thread_exit.
  */
-void sys_exit(int status) {
+void sys_exit(int status, struct intr_frame *f UNUSED) {
     exit_with_status(status);
     thread_exit();
 }
@@ -142,9 +178,9 @@ void sys_exit(int status) {
  *  The child is forced to load and if it fails to load, it returns -1.
  *  Return -1 if file not found.
  */
-int sys_exec(const char *file_name) {
+int sys_exec(const char *file_name, struct intr_frame *f) {
     /* If the filename is invalid, immediately return pid -1 */
-    if (! valid_pointer((void *) file_name)) {
+    if (! valid_pointer((void *) file_name, f)) {
         return -1;
     }
     tid_t id = process_execute(file_name);
@@ -159,7 +195,7 @@ int sys_exec(const char *file_name) {
  *  Note we simply use a one-to-one mapping between pid and tid
  *  for simplicity
  */
-int sys_wait(tid_t pid) {
+int sys_wait(tid_t pid, struct intr_frame *f UNUSED) {
     return process_wait(pid);
 }
 
@@ -167,10 +203,10 @@ int sys_wait(tid_t pid) {
  *  Creates a new file called file initially initial_size bytes in size. Returns
  *  true if successful, false otherwise. Does not open the file.
  */
-bool sys_create(const char *file_name, unsigned initial_size) {
+bool sys_create(const char *file_name, unsigned initial_size, struct intr_frame *f) {
     /* If the filename is invalid, immediately exit */
-    if (! valid_pointer((void *) file_name)) {
-        sys_exit(-1);
+    if (! valid_pointer((void *) file_name, f)) {
+        sys_exit(-1, f);
     }
     return filesys_create(file_name, initial_size);
 }
@@ -180,16 +216,16 @@ bool sys_create(const char *file_name, unsigned initial_size) {
  *  file may be removed regardless of whether it is open or closed, and removing
  *  an open file does not close it.
  */
-bool sys_remove(const char *file_name) {
+bool sys_remove(const char *file_name, struct intr_frame *f UNUSED) {
     return filesys_remove(file_name);
 }
 
 /* Opens the file with file_name and returns a file descriptor. */
-int sys_open(const char *file_name) {
+int sys_open(const char *file_name, struct intr_frame *f) {
     struct thread *t = thread_current();
     /* If the filename is invalid, immediately exit */
-    if (! valid_pointer((void *) file_name)) {
-        sys_exit(-1);
+    if (! valid_pointer((void *) file_name, f)) {
+        sys_exit(-1, f);
     }
     /*
      * If this thread has already opened this file, reopen it (with a new
@@ -240,7 +276,7 @@ int sys_open(const char *file_name) {
  *  Returns the size, in bytes, of the file open as fd.
  *  If file not found, returns -1.
  */
-int sys_filesize(int fd) {
+int sys_filesize(int fd, struct intr_frame *f UNUSED) {
     struct file *file = fd_to_file(thread_current(), fd);
     if (! file) {
         return -1;
@@ -252,10 +288,10 @@ int sys_filesize(int fd) {
  *  the total number of bytes read. 0 if at the end of the file, -1 if the
  *  file could not be read.
  */
-int sys_read(int fd, const void *buffer, unsigned size) {
+int sys_read(int fd, const void *buffer, unsigned size, struct intr_frame *f) {
     /* If the buffer is invalid, immediately exit */
-    if (!valid_pointer((void *) buffer) || fd == 1) {
-        sys_exit(-1);
+    if (!valid_pointer_range((void *) buffer, size, f) || fd == 1) {
+        sys_exit(-1, f);
     }
     if (fd == 0) { // STDIN
         unsigned int i = 0;
@@ -281,10 +317,10 @@ int sys_read(int fd, const void *buffer, unsigned size) {
  *  console if fd is set to 1. Returns the number of bytes written.
  *  If file not found, returns 0
  */
-int sys_write(int fd, const void *buffer, unsigned size) {
+int sys_write(int fd, const void *buffer, unsigned size, struct intr_frame *f) {
     /* If the buffer is invalid, immediately exit */
-    if (!valid_pointer((void *) buffer) || fd == 0) {
-        sys_exit(-1);
+    if (!valid_pointer_range((void *) buffer, size, f) || fd == 0) {
+        sys_exit(-1, f);
     }
     if (fd == 1) { // STDOUT
         putbuf(buffer, size);
@@ -305,7 +341,7 @@ int sys_write(int fd, const void *buffer, unsigned size) {
  *  Changes the next byte to be read or written in open file fd to position,
  *  expressed in bytes from the beginning of the file.
  */
-void sys_seek(int fd, unsigned position) {
+void sys_seek(int fd, unsigned position, struct intr_frame *f UNUSED) {
     struct file *file = fd_to_file(thread_current(), fd);
     if (! file) {
         return;
@@ -319,7 +355,7 @@ void sys_seek(int fd, unsigned position) {
  *  expressed in bytes from the beginning of the file.
  *  If file not found, returns 0
  */
-unsigned sys_tell(int fd) {
+unsigned sys_tell(int fd, struct intr_frame *f UNUSED) {
     struct file *file = fd_to_file(thread_current(), fd);
     if (! file) {
         return 0;
@@ -331,7 +367,7 @@ unsigned sys_tell(int fd) {
  *  Closes file descriptor fd. Exiting or terminating a process implicitly closes
  *  all its open file descriptors, as if by calling this function for each one.
  */
-void sys_close(int fd) {
+void sys_close(int fd, struct intr_frame *f UNUSED) {
     struct file_descriptor *file_desp = fd_to_file_desc(thread_current(), fd);
     if (! file_desp) {// Couldn't find this file
         return;
@@ -346,9 +382,9 @@ void sys_close(int fd) {
 }
 
 /*! Called for system calls that are not implemented. */
-void sys_nosys(void) {
+void sys_nosys(struct intr_frame *f UNUSED) {
     printf("ENOSYS: Function not implemented.\n");
-    sys_exit(-1);
+    sys_exit(-1, f);
     return;
 }
 
@@ -371,77 +407,77 @@ static void syscall_handler(struct intr_frame *f) {
          * Arguments should be pushed in reverse order
          */
         case SYS_HALT:
-            sys_halt();
+            sys_halt(f);
             NOT_REACHED();
 
         case SYS_EXIT:
             status = (int) peek_stack(f, 1);
-            sys_exit(status);
+            sys_exit(status, f);
             break;
 
         case SYS_EXEC:
             file_name = (const char *) peek_stack(f, 1);
-            f->eax = sys_exec(file_name);
+            f->eax = sys_exec(file_name, f);
             break;
 
         case SYS_WAIT:
             pid = peek_stack(f, 1);
-            f->eax = sys_wait(pid);
+            f->eax = sys_wait(pid, f);
             break;
 
         case SYS_CREATE:
             file_name = (const char *) peek_stack(f, 1);
             initial_size = (unsigned int) peek_stack(f, 2);
-            f->eax = sys_create(file_name, initial_size);
+            f->eax = sys_create(file_name, initial_size, f);
             break;
 
         case SYS_REMOVE:
             file_name = (const char *) peek_stack(f, 1);
-            f->eax = sys_remove(file_name);
+            f->eax = sys_remove(file_name, f);
             break;
 
         case SYS_OPEN:
             file_name = (const char *) peek_stack(f, 1);
-            f->eax = sys_open(file_name);
+            f->eax = sys_open(file_name, f);
             break;
 
         case SYS_FILESIZE:
             fd = (int) peek_stack(f, 1);
-            f->eax = sys_filesize(fd);
+            f->eax = sys_filesize(fd, f);
             break;
 
         case SYS_READ:
             fd = (int) peek_stack(f, 1);
             buffer = (const void *) peek_stack(f, 2);
             size = (unsigned) peek_stack(f, 3);
-            f->eax = sys_read(fd, buffer, size);
+            f->eax = sys_read(fd, buffer, size, f);
             break;
 
         case SYS_WRITE:
             fd = (int) peek_stack(f, 1);
             buffer = (void *) peek_stack(f, 2);
             size = (unsigned int) peek_stack(f, 3);
-            f->eax = sys_write(fd, buffer, size);
+            f->eax = sys_write(fd, buffer, size, f);
             break;
 
         case SYS_SEEK:
             fd = (int) peek_stack(f, 1);
             position = (unsigned) peek_stack(f, 2);
-            sys_seek(fd, position);
+            sys_seek(fd, position, f);
             break;
 
         case SYS_TELL:
             fd = (int) peek_stack(f, 1);
-            f->eax = sys_tell(fd);
+            f->eax = sys_tell(fd, f);
             break;
 
         case SYS_CLOSE:
             fd = (int) peek_stack(f, 1);
-            sys_close(fd);
+            sys_close(fd, f);
             break;
 
         default:
-            sys_nosys();
+            sys_nosys(f);
             NOT_REACHED();
     }
     return;

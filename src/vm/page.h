@@ -65,3 +65,5 @@ void supp_add_stack_entry(void *page_addr);
 bool handle_page_fault(void *page_addr, struct intr_frame *f);
 /* Load an executable source page to physical memory */
 bool load_exec(struct supp_page_table_entry * exec_entry);
+/* Load a stack source page to physical memory */
+bool load_stack(struct supp_page_table_entry * stack_entry);

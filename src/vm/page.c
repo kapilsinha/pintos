@@ -143,20 +143,24 @@ bool handle_page_fault(void *page_addr, struct intr_frame *f) {
     }
     */
 
-    // if (page_addr == f->esp - 4 || page_addr == f->esp - 32) { // ||
-    //     //((unsigned)page_addr < 0xc0000000 && (unsigned)page_addr > 0x40000000)) {
-    //     printf("Trying to grow the stack\n");
-    //     supp_add_stack_entry(upage);
-    //     uint8_t *kpage = frame_get_page();
-    //     //memset(kpage, 0, PGSIZE);
-    //     return install_page(upage, kpage, true);
-    // }
+    if (! entry && is_user_vaddr(page_addr) &&
+        (page_addr == f->esp - 4 || page_addr == f->esp - 32 || page_addr > f->esp)) {
+         // ((unsigned)page_addr < 0xc0000000 && (unsigned)page_addr > 0x40000000)) {
+         // printf("Trying to grow the stack\n");
+         supp_add_stack_entry(upage);
+         uint8_t *kpage = frame_get_page();
+         //memset(kpage, 0, PGSIZE);
+         return install_page(upage, kpage, true);
+    }
 
     if (entry == NULL) {
         return false;
     }
     if (entry->type == PAGE_SOURCE_EXECUTABLE) {
         return load_exec(entry);
+    }
+    if (entry->type == PAGE_SOURCE_STACK) {
+        return load_stack(entry);
     }
     PANIC("Haven't handled this kind of page fault yet");
 }
@@ -188,6 +192,29 @@ bool load_exec(struct supp_page_table_entry *exec_entry) {
 
     // Add the page to the process's address space.
     if (!install_page(upage, kpage, writable)) {
+        frame_free_page(kpage);
+        return false;
+    }
+    return true;
+}
+
+/*! Load a stack page to physical memory
+ *  This function should be called upon a page fault to bring
+ *  in a certain stack page into memory.
+ *  Returns true if stack page load properly, else false
+ */
+bool load_stack(struct supp_page_table_entry *stack_entry) {
+    void *upage = stack_entry->page_addr;
+
+    // Get a page of memory.
+    uint8_t *kpage = frame_get_page();
+    if (kpage == NULL)
+        return false;
+
+    //memset(kpage, 0, PGSIZE);
+    
+    // Add the page to the process's address space.
+    if (!install_page(upage, kpage, true)) {
         frame_free_page(kpage);
         return false;
     }
