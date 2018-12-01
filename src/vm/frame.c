@@ -33,7 +33,8 @@ void frame_table_init(size_t user_pages) {
         frame_table[i].in_use = 0;
         frame_table[i].page = NULL;
         frame_table[i].t = NULL;
-        lock_init(frame_table[i].pin);
+        // TODO: Malloc this before initializing
+        // lock_init(frame_table[i].pin);
         // Get page from user pool to keep kernel from running out of memory
         frame_table[i].frame = palloc_get_page(PAL_USER | PAL_ASSERT | PAL_ZERO);
         if (frame_table[i].frame == NULL) {
