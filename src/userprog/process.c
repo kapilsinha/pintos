@@ -504,7 +504,7 @@ static bool load_segment(struct file *file, off_t ofs, uint8_t *upage,
         file_seek(new_file, ofs);
         supp_add_exec_entry(new_file, page_read_bytes, page_zero_bytes, writable, upage);
         ofs += page_read_bytes;
-        
+
         /* Advance. */
         read_bytes -= page_read_bytes;
         zero_bytes -= page_zero_bytes;
