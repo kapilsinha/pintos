@@ -1,6 +1,7 @@
 #include "userprog/syscall.h"
 #include "userprog/process.h"
 #include <stdio.h>
+#include <string.h>
 #include <syscall-nr.h>
 #include "threads/interrupt.h"
 #include "threads/vaddr.h"
@@ -24,8 +25,9 @@ uint32_t peek_stack(struct intr_frame *f, int back);
  *  returns the kernel virtual address corresponding to that physical address
  */
 int valid_pointer(void *vaddr) {
+    vaddr = pg_round_down(vaddr);
     return (is_user_vaddr(vaddr) &&
-            pagedir_get_page(thread_current()->pagedir, vaddr));
+            find_entry(vaddr, thread_current()));
 }
 
 /*! Peeks/accesses an element from the interrupt stack frame passed in. */
@@ -33,7 +35,7 @@ uint32_t peek_stack(struct intr_frame *f, int back) {
     uint32_t elem;
     uint32_t *addr = (uint32_t *) f->esp + back;
     /* If the esp points to a bad address, immediately do exit(-1) */
-    if (!valid_pointer(addr)) {
+    if (!valid_pointer((void *) addr)) {
         sys_exit(-1);
     }
     elem = *addr;
@@ -142,7 +144,7 @@ void sys_exit(int status) {
  */
 int sys_exec(const char *file_name) {
     /* If the filename is invalid, immediately return pid -1 */
-    if (! valid_pointer(file_name)) {
+    if (! valid_pointer((void *) file_name)) {
         return -1;
     }
     tid_t id = process_execute(file_name);
@@ -167,7 +169,7 @@ int sys_wait(tid_t pid) {
  */
 bool sys_create(const char *file_name, unsigned initial_size) {
     /* If the filename is invalid, immediately exit */
-    if (! valid_pointer(file_name)) {
+    if (! valid_pointer((void *) file_name)) {
         sys_exit(-1);
     }
     return filesys_create(file_name, initial_size);
@@ -186,7 +188,7 @@ bool sys_remove(const char *file_name) {
 int sys_open(const char *file_name) {
     struct thread *t = thread_current();
     /* If the filename is invalid, immediately exit */
-    if (! valid_pointer(file_name)) {
+    if (! valid_pointer((void *) file_name)) {
         sys_exit(-1);
     }
     /*
@@ -227,7 +229,7 @@ int sys_open(const char *file_name) {
     }
 
     file_desp->fd = t->fd_next++;
-    file_desp->file_name = file_name;
+    file_desp->file_name = (char *) file_name;
 
     /* Append to the file descriptor list for this thread */
     list_push_back(&t->files, &file_desp->elem);
@@ -252,7 +254,7 @@ int sys_filesize(int fd) {
  */
 int sys_read(int fd, const void *buffer, unsigned size) {
     /* If the buffer is invalid, immediately exit */
-    if (!valid_pointer(buffer) || fd == 1) {
+    if (!valid_pointer((void *) buffer) || fd == 1) {
         sys_exit(-1);
     }
     if (fd == 0) { // STDIN
@@ -268,7 +270,7 @@ int sys_read(int fd, const void *buffer, unsigned size) {
     if (! file) {
         return -1;
     }
-    int32_t bytes_read = file_read(file, buffer, size);
+    int32_t bytes_read = file_read(file, (void *) buffer, size);
     if ((unsigned) bytes_read < size) {
         return 0;
     }
@@ -281,7 +283,7 @@ int sys_read(int fd, const void *buffer, unsigned size) {
  */
 int sys_write(int fd, const void *buffer, unsigned size) {
     /* If the buffer is invalid, immediately exit */
-    if (!valid_pointer(buffer) || fd == 0) {
+    if (!valid_pointer((void *) buffer) || fd == 0) {
         sys_exit(-1);
     }
     if (fd == 1) { // STDOUT

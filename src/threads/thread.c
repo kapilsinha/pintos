@@ -1,5 +1,4 @@
 #include "threads/thread.h"
-#include <debug.h>
 #include <stddef.h>
 #include <random.h>
 #include <stdio.h>
@@ -15,7 +14,6 @@
 #ifdef USERPROG
 #include "userprog/process.h"
 #endif
-#include "vm/frame.h"
 
 /*! Random value for struct thread's `magic' member.
     Used to detect stack overflow.  See the big comment at the top
@@ -194,6 +192,9 @@ tid_t child_thread_create(const char *name, int priority, thread_func *function,
 
     /* Initialize the list of children */
     list_init(&t->children);
+
+    /* Initialize the hash table. */
+    hash_init(&t->supp_page_table, &vaddr_hash, &vaddr_less, NULL);
 
     /* Initialize the list of file descriptors and the file descriptor */
     list_init(&t->files);
