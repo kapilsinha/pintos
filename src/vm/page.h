@@ -9,6 +9,7 @@
 #include "userprog/pagedir.h"
 #include "threads/thread.h"
 #include "frame.h"
+#include "threads/interrupt.h"
 
 /*!
  *  Type of page source
@@ -61,6 +62,6 @@ void supp_add_exec_entry(struct file *f, uint32_t page_data_bytes,
 void supp_add_stack_entry(void *page_addr);
 
 /* Handles a generic page fault */
-bool handle_page_fault(void *page_addr);
+bool handle_page_fault(void *page_addr, struct intr_frame *f);
 /* Load an executable source page to physical memory */
 bool load_exec(struct supp_page_table_entry * exec_entry);

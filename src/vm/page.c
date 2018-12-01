@@ -131,10 +131,10 @@ void supp_add_stack_entry(void *page_addr) {
  *  Handles a generic page fault by determining the page source type
  *  and then calling the appropriate specific function
  */
-bool handle_page_fault(void *page_addr) {
+bool handle_page_fault(void *page_addr, struct intr_frame *f) {
     struct thread *t = thread_current();
-    page_addr = pg_round_down(page_addr);
-    struct supp_page_table_entry *entry = find_entry(page_addr, t);
+    uint8_t *upage = pg_round_down(page_addr);
+    struct supp_page_table_entry *entry = find_entry(upage, t);
     /*
     printf("Hash table size: %d\n", hash_size(&t->supp_page_table));
     printf("Looking for address : %p\n", page_addr);
@@ -142,6 +142,16 @@ bool handle_page_fault(void *page_addr) {
         print_hash_table(&t->supp_page_table, i);
     }
     */
+
+    // if (page_addr == f->esp - 4 || page_addr == f->esp - 32) { // ||
+    //     //((unsigned)page_addr < 0xc0000000 && (unsigned)page_addr > 0x40000000)) {
+    //     printf("Trying to grow the stack\n");
+    //     supp_add_stack_entry(upage);
+    //     uint8_t *kpage = frame_get_page();
+    //     //memset(kpage, 0, PGSIZE);
+    //     return install_page(upage, kpage, true);
+    // }
+
     if (entry == NULL) {
         return false;
     }
