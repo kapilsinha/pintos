@@ -1,15 +1,14 @@
 #include <debug.h>
 #include <string.h>
 #include <stdio.h>
-#include "devices/block.h"
 #include "hash.h"
 #include "filesys/file.h"
 #include "threads/vaddr.h"
 #include "threads/malloc.h"
 #include "userprog/pagedir.h"
 #include "threads/thread.h"
-#include "frame.h"
 #include "threads/interrupt.h"
+#include "frame.h"
 
 /*!
  *  Type of page source
@@ -53,7 +52,12 @@ bool vaddr_less (const struct hash_elem *a_, const struct hash_elem *b_,
     void *aux UNUSED);
 /* Finds the supplemental page table entry for a user page */
 struct supp_page_table_entry *find_entry(void *upage, struct thread *t);
+void print_hash_table(struct hash *h, int bucket_idx);
 bool install_page(void *upage, void *kpage, bool writable);
+
+/* Determines whether we grow the stack depending on where vaddr is located
+ * in relation to the stack pointer f->esp */
+bool valid_stack_growth(void *vaddr, struct intr_frame *f);
 
 /* Add a supplemental page table entry for loading an executable */
 void supp_add_exec_entry(struct file *f, uint32_t page_data_bytes,

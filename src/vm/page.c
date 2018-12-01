@@ -70,6 +70,18 @@ bool install_page(void *upage, void *kpage, bool writable) {
 }
 
 /*!
+ *  Determines whether to grow the stack depending on vaddr and
+ *  the stack pointer (f->esp).
+ *  The stack is grown if the faulting address is either 4 or 32
+ *  bytes under the stack pointer (for PUSH or PUSHA instructions)
+ *  or if the faulting address is above the stack pointer.
+ */
+bool valid_stack_growth(void *vaddr, struct intr_frame *f) {
+    return is_user_vaddr(vaddr) && (vaddr == f->esp - 4
+           || vaddr == f->esp - 32 || vaddr > f->esp);
+}
+
+/*!
  *  Adds a supplemental page table entry for when an executable is loaded
  */
 void supp_add_exec_entry(struct file *f, uint32_t page_data_bytes,
@@ -118,6 +130,7 @@ void supp_add_stack_entry(void *page_addr) {
     stack_entry->page_addr = page_addr;
     stack_entry->save_loc = 1;
     stack_entry->eviction_status = 0;
+    stack_entry->bf.writable = true;
     struct hash_elem * elem
         = hash_insert(&t->supp_page_table, &stack_entry->elem);
     /* This vaddr should not be present in the hash table;
@@ -143,14 +156,9 @@ bool handle_page_fault(void *page_addr, struct intr_frame *f) {
     }
     */
 
-    if (! entry && is_user_vaddr(page_addr) &&
-        (page_addr == f->esp - 4 || page_addr == f->esp - 32 || page_addr > f->esp)) {
-         // ((unsigned)page_addr < 0xc0000000 && (unsigned)page_addr > 0x40000000)) {
-         // printf("Trying to grow the stack\n");
+    if (! entry && valid_stack_growth(page_addr, f)) {
          supp_add_stack_entry(upage);
-         uint8_t *kpage = frame_get_page();
-         //memset(kpage, 0, PGSIZE);
-         return install_page(upage, kpage, true);
+         return load_stack(find_entry(upage, t));
     }
 
     if (entry == NULL) {
@@ -175,7 +183,7 @@ bool load_exec(struct supp_page_table_entry *exec_entry) {
     size_t page_read_bytes = exec_entry->bf.page_data_bytes;
     size_t page_zero_bytes = exec_entry->bf.page_zero_bytes;
     bool writable = exec_entry->bf.writable;
-    void *upage = exec_entry->page_addr;
+    uint8_t *upage = exec_entry->page_addr;
 
     // Get a page of memory.
     uint8_t *kpage = frame_get_page();
@@ -204,17 +212,18 @@ bool load_exec(struct supp_page_table_entry *exec_entry) {
  *  Returns true if stack page load properly, else false
  */
 bool load_stack(struct supp_page_table_entry *stack_entry) {
-    void *upage = stack_entry->page_addr;
+    uint8_t *upage = stack_entry->page_addr;
+    bool writable = stack_entry->bf.writable;
 
     // Get a page of memory.
     uint8_t *kpage = frame_get_page();
     if (kpage == NULL)
         return false;
 
-    //memset(kpage, 0, PGSIZE);
-    
+    memset(kpage, 0, PGSIZE);
+
     // Add the page to the process's address space.
-    if (!install_page(upage, kpage, true)) {
+    if (!install_page(upage, kpage, writable)) {
         frame_free_page(kpage);
         return false;
     }

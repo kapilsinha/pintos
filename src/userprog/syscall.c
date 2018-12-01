@@ -19,9 +19,12 @@ uint32_t peek_stack(struct intr_frame *f, int back);
  *  virtual address is mapped to physical memory.
  *  is_user_vaddr (defined in threads/vaddr.h) simply checks if vaddr is
  *  less than the PHYS_BASE
- *  pagedir_get_page (defined in pagedir.c) looks up the physical address for
- *  vaddr. Returns NULL if vaddr is unmapped in the page directory or else
- *  returns the kernel virtual address corresponding to that physical address
+ *  find_entry (defined in page.c) checks whether the virtual address contains
+ *  some mapping in the supplemental page table.
+ *  Returns NULL if vaddr is unmapped in the page directory
+ *
+ *  If there exists no entry but the virtual address indicates that it is
+ *  trying to grow the stack, a stack page is added to the supp page table
  */
 /*
 int valid_pointer(void *vaddr) {
@@ -31,27 +34,33 @@ int valid_pointer(void *vaddr) {
 }
 */
 int valid_pointer(void *vaddr, struct intr_frame *f) {
-    uint8_t *upage = pg_round_down(vaddr);
     if (! is_user_vaddr(vaddr)) {
         return false;
     }
-    struct supp_page_table_entry * entry = find_entry(upage, thread_current());
-    if (entry) {
+
+    uint8_t *upage = pg_round_down(vaddr);
+    if (find_entry(upage, thread_current())) {
         return true;
     }
-    if (vaddr == f->esp - 4 || vaddr == f->esp - 32 || vaddr > f->esp) {
+    if (valid_stack_growth(vaddr, f)) {
         supp_add_stack_entry(upage);
         return true;
     }
     return false;
 }
 
+/*!
+ *  Performs the same function as valid_pointer, but efficiently ensures
+ *  that each page in some range of addresses (e.g. a buffer) are valid,
+ *  again growing the stack if the start address indicates that it is
+ *  trying to grow the stack
+ */
 int valid_pointer_range(void *vaddr, unsigned size, struct intr_frame *f) {
     if (! is_user_vaddr(vaddr) || ! is_user_vaddr(vaddr + size)) {
         return false;
     }
     void *cur_addr = vaddr;
-    bool stack_growth =  (vaddr == f->esp - 4 || vaddr == f->esp - 32 || vaddr > f->esp);
+    bool stack_growth = valid_stack_growth(vaddr, f);
     while (cur_addr < vaddr + size) {
         uint8_t *upage = pg_round_down(cur_addr);
         struct supp_page_table_entry * entry = find_entry(upage, thread_current());
@@ -61,7 +70,7 @@ int valid_pointer_range(void *vaddr, unsigned size, struct intr_frame *f) {
         if (! entry && stack_growth) {
             supp_add_stack_entry(upage);
         }
-        cur_addr = upage + PGSIZE; // TODO: make sure you account for all pages here (check logic)
+        cur_addr = upage + PGSIZE;
     }
     return true;
 }
