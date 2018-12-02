@@ -540,6 +540,10 @@ static bool setup_stack(const char *filename, void **esp) {
      * (it is always allocated immediately) */
     kpage = frame_get_page();
     if (kpage != NULL) {
+        // Update the struct
+        struct frame_table_entry *entry = get_frame_entry(kpage);
+        entry->page = upage;
+        entry->t = thread_current();
         success = install_page(upage, kpage, true);
         if (success) {
             /* Calculate the total size/length of the arguments */

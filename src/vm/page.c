@@ -1,4 +1,5 @@
 #include "page.h"
+#include "swap.h"
 
 /* Implementation of supplemental page table. */
 
@@ -129,7 +130,8 @@ void supp_add_stack_entry(void *page_addr) {
     stack_entry->type = PAGE_SOURCE_STACK;
     stack_entry->page_addr = page_addr;
     stack_entry->save_loc = 1;
-    stack_entry->eviction_status = 0;
+    stack_entry->load_loc = 0;
+    stack_entry->eviction_status = 1;
     stack_entry->bf.writable = true;
     struct hash_elem * elem
         = hash_insert(&t->supp_page_table, &stack_entry->elem);
@@ -160,15 +162,17 @@ bool handle_page_fault(void *page_addr, struct intr_frame *f) {
          supp_add_stack_entry(upage);
          return load_stack(find_entry(upage, t));
     }
-
     if (entry == NULL) {
         return false;
     }
-    if (entry->type == PAGE_SOURCE_EXECUTABLE) {
+    if (entry->type == PAGE_SOURCE_EXECUTABLE && entry->load_loc == 0) {
         return load_exec(entry);
     }
-    if (entry->type == PAGE_SOURCE_STACK) {
+    if (entry->type == PAGE_SOURCE_STACK && entry->load_loc == 0) {
         return load_stack(entry);
+    }
+    if (entry->load_loc == 1) {
+        return load_swap(entry);
     }
     PANIC("Haven't handled this kind of page fault yet");
 }
@@ -189,6 +193,11 @@ bool load_exec(struct supp_page_table_entry *exec_entry) {
     uint8_t *kpage = frame_get_page();
     if (kpage == NULL)
         return false;
+
+    // Update the struct
+    struct frame_table_entry *entry = get_frame_entry(kpage);
+    entry->page = upage;
+    entry->t = thread_current();
 
     // Load this page.
     if (file_read(file, kpage, page_read_bytes) != (int) page_read_bytes) {
@@ -220,6 +229,11 @@ bool load_stack(struct supp_page_table_entry *stack_entry) {
     if (kpage == NULL)
         return false;
 
+    // Update the struct
+    struct frame_table_entry *entry = get_frame_entry(kpage);
+    entry->page = upage;
+    entry->t = thread_current();
+
     memset(kpage, 0, PGSIZE);
 
     // Add the page to the process's address space.
@@ -227,5 +241,38 @@ bool load_stack(struct supp_page_table_entry *stack_entry) {
         frame_free_page(kpage);
         return false;
     }
+    return true;
+}
+
+/*! Loads a file from swap back into memory. */
+bool load_swap(struct supp_page_table_entry *swap_entry) {
+    uint8_t *upage = swap_entry->page_addr;
+    bool writable = swap_entry->bf.writable;
+    size_t swap_slot = swap_entry->swap_slot;
+
+    // Get a page of memory.
+    uint8_t *kpage = frame_get_page();
+    if (kpage == NULL) {
+        return false;
+    }
+
+    // Update the struct
+    struct frame_table_entry *entry = get_frame_entry(kpage);
+    entry->page = upage;
+    entry->t = thread_current();
+
+    // Clear page
+    memset(kpage, 0, PGSIZE);
+
+    // Read from swap
+    swap_read(kpage, swap_slot);
+
+    // Add the page to the process's address space.
+    if (!install_page(upage, kpage, writable)) {
+        printf("Couldn't install\n");
+        frame_free_page(kpage);
+        return false;
+    }
+
     return true;
 }

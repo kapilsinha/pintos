@@ -1,3 +1,6 @@
+#ifndef VM_FRAME_H
+#define VM_FRAME_H
+
 #include "list.h"
 #include "threads/synch.h"
 
@@ -17,3 +20,7 @@ struct frame_table_entry *get_frame_entry(void *frame);
 void frame_table_init(size_t user_pages);
 void *frame_get_page(void);
 void frame_free_page(void *frame);
+
+struct frame_table_entry *evict_page(void);
+
+#endif /* vm/frame.h */

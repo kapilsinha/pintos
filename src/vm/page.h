@@ -1,3 +1,6 @@
+#ifndef VM_PAGE_H
+#define VM_PAGE_H
+
 #include <debug.h>
 #include <string.h>
 #include <stdio.h>
@@ -54,6 +57,7 @@ bool vaddr_less (const struct hash_elem *a_, const struct hash_elem *b_,
 struct supp_page_table_entry *find_entry(void *upage, struct thread *t);
 void print_hash_table(struct hash *h, int bucket_idx);
 bool install_page(void *upage, void *kpage, bool writable);
+struct supp_page_table_entry *find_entry(void *upage, struct thread *t);
 
 /* Determines whether we grow the stack depending on where vaddr is located
  * in relation to the stack pointer f->esp */
@@ -71,3 +75,7 @@ bool handle_page_fault(void *page_addr, struct intr_frame *f);
 bool load_exec(struct supp_page_table_entry * exec_entry);
 /* Load a stack source page to physical memory */
 bool load_stack(struct supp_page_table_entry * stack_entry);
+/* Loads a file from swap back into memory */
+bool load_swap(struct supp_page_table_entry *swap_entry);
+
+#endif /* vm/page.h */

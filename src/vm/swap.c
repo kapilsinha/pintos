@@ -1,11 +1,16 @@
+#include <stdlib.h>
+#include <string.h>
+#include <stdio.h>
 #include "swap.h"
 #include "frame.h"
+#include "threads/malloc.h"
 
 /* Number of sectors in a page. 512 * 8 = 4096. */
 #define NUM_SECTORS 8
 
 static size_t num_swap_slots;
 static struct block* swap;
+struct lock swap_lock;
 
 /*!
  *  Implementation of swap table
@@ -22,6 +27,8 @@ void swap_table_init(void) {
     if (swap_table == NULL) {
         PANIC("Failed to create swap table");
     }
+    /* Initialize the lock for the swap file. */
+    lock_init(&swap_lock);
 }
 
 /*!
@@ -29,9 +36,10 @@ void swap_table_init(void) {
  *  mark it as occupied in the swap table
  */
 size_t swap_get_slot(void) {
-    size_t slot = bitmap_scan_and_flip(swap_table, 0, 1, false);
+    size_t slot = bitmap_scan(swap_table, 0, 1, false);
+    // printf("Got slot %zu\n", slot);
     if (slot == BITMAP_ERROR) {
-        PANIC("Swap table is full");
+        PANIC("Swap table is full!");
     }
     return slot;
 }
@@ -42,7 +50,10 @@ size_t swap_get_slot(void) {
  * was written to.
  */
 size_t swap_write(void *upage) {
+    lock_acquire(&swap_lock);
     size_t slot = swap_get_slot() * 8;
+    // printf("Marking slot %zu\n", slot / 8);
+    bitmap_mark(swap_table, slot / 8);
     // Buffer for one block
     void *buffer = malloc(BLOCK_SECTOR_SIZE);
     // Write to the swap block, beginning at sector "slot"
@@ -53,6 +64,7 @@ size_t swap_write(void *upage) {
         block_write(swap, slot + i, buffer);
         upage += BLOCK_SECTOR_SIZE;
     }
+    lock_release(&swap_lock);
     return slot;
 }
 
@@ -61,7 +73,10 @@ size_t swap_write(void *upage) {
  * multiple of 8 and that upage points to a user page.
  */
 void swap_read(void *upage, size_t slot) {
+    // printf("Reading slot %d\n", slot);
+    lock_acquire(&swap_lock);
     ASSERT(slot % 8 == 0);
+    ASSERT(bitmap_test(swap_table, slot / 8));
     // Buffer for one block
     void *buffer = malloc(BLOCK_SECTOR_SIZE);
     // Write to the swap block, beginning at sector "slot"
@@ -72,6 +87,8 @@ void swap_read(void *upage, size_t slot) {
         // Write the buffer to swap
         upage += BLOCK_SECTOR_SIZE;
     }
+    bitmap_reset(swap_table, slot / 8);
+    lock_release(&swap_lock);
     return;
 }
 

@@ -7,6 +7,8 @@
 #include "threads/palloc.h"
 #include "threads/vaddr.h"
 #include "threads/thread.h"
+#include "random.h"
+#include "page.h"
 #include "swap.h"
 
 /* Implementation of frame table allocator. */
@@ -24,8 +26,13 @@ static struct lock frame_table_lock;
  * Returns a pointer to the frame table entry struct for this frame. If not
  * found, returns NULL. */
 struct frame_table_entry *get_frame_entry(void *frame) {
-    return (((struct frame_table_entry *)&frame)->frame) ?
-        (struct frame_table_entry *)&frame : NULL;
+    // TODO: Maybe find more efficient way of doing this?
+    for (unsigned int i = 0; i < num_user_pages; i++) {
+        if (frame_table[i].frame == frame) {
+            return &frame_table[i];
+        }
+    }
+    return NULL;
 }
 
 /* Initializes the frame table. */
@@ -63,10 +70,11 @@ void *frame_get_page(void) {
             return frame_table[i].frame;
         }
     }
-    // TODO: If no empty frames are found, evict a page
-    // We could not find an unused frame, PANIC the kernel
-    PANIC("Ran out of frames!");
+    // If no empty frames are found, evict a page
+    struct frame_table_entry *evicted = evict_page();
+    evicted->in_use = 1;
     lock_release(&frame_table_lock);
+    return evicted->frame;
 }
 
 /* Frees a physical frame by marking it as unused. */
@@ -86,28 +94,34 @@ void frame_free_page(void *frame) {
  * Evicts a single frame from memory and returns a pointer to the frame that was
  * just evicted. Assumes that all frames are being used.
  */
-// void *el_evictor(void) {
-//     lock_acquire(&frame_table_lock);
-//     struct thread *t = thread_current();
-//     // TODO: Implement clock eviction policy
-//     struct frame_table_entry rand_frame = frame_table[rand() % num_user_pages];
-//     // Acquire lock before evicting
-//     lock_acquire(&rand_frame.pin);
-//     // Get supplemental page table entry
-//     struct supp_page_table_entry *sup_entry = find_entry(rand_frame.page, t);
-//     // Determine where to write i.e. swap or disk
-//     if (sup_entry->save_loc == 1) {// Save to swap
-//         swap_write(rand_frame.page);
-//     }
-//     else {// Save to backing file
-//         // If read only, then we don't need to save anything
-//     }
-//     // Evict the page and update the frame table entry
-//     pagedir_clear_page(t->pd, rand_frame.page);
-//     rand_frame.in_use = 0;
-//
-//     lock_release(&rand_frame.pin);
-//     lock_release(&frame_table_lock);
-//     // Return the frame address after clearing the frame
-//     return memset(rand_frame.frame, 0, PGSIZE);
-// }
+struct frame_table_entry *evict_page(void) {
+    struct thread *t = thread_current();
+    // TODO: Implement clock eviction policy
+    struct frame_table_entry *rand_frame = &frame_table[random_ulong() % num_user_pages];
+    // Acquire lock before evicting
+    lock_acquire(&rand_frame->pin);
+    // Get supplemental page table entry
+    ASSERT(rand_frame->page != NULL);
+    struct supp_page_table_entry *sup_entry = find_entry(rand_frame->page, t);
+    if (!sup_entry) PANIC("Didn't find entry in evict_page");
+    sup_entry->eviction_status = 2;
+    // Determine where to write i.e. swap or disk
+    if (sup_entry->save_loc == 1) {// Save to swap
+        int slot = swap_write(rand_frame->page);
+        sup_entry->swap_slot = slot;
+        sup_entry->load_loc = 1;
+    }
+    else {// Save to backing file
+        ASSERT(file_write(sup_entry->bf.file, rand_frame->page, PGSIZE) == PGSIZE);
+        sup_entry->load_loc = 0;
+    }
+    // Evict the page and update the frame table entry
+    pagedir_clear_page(t->pagedir, rand_frame->page);
+    rand_frame->in_use = 0;
+    // Mark as evicted
+    sup_entry->eviction_status = 1;
+    lock_release(&rand_frame->pin);
+    // Return the frame address after clearing the frame
+    memset(rand_frame->frame, 0, PGSIZE);
+    return rand_frame;
+}
