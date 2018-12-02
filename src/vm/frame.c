@@ -20,6 +20,14 @@
 static size_t num_user_pages;
 static struct lock frame_table_lock;
 
+/*!
+ * Returns a pointer to the frame table entry struct for this frame. If not
+ * found, returns NULL. */
+struct frame_table_entry *get_frame_entry(void *frame) {
+    return (((struct frame_table_entry *)&frame)->frame) ?
+        (struct frame_table_entry *)&frame : NULL;
+}
+
 /* Initializes the frame table. */
 void frame_table_init(size_t user_pages) {
     num_user_pages = user_pages - 1;
@@ -33,8 +41,7 @@ void frame_table_init(size_t user_pages) {
         frame_table[i].in_use = 0;
         frame_table[i].page = NULL;
         frame_table[i].t = NULL;
-        // TODO: Malloc this before initializing
-        // lock_init(frame_table[i].pin);
+        lock_init(&frame_table[i].pin);
         // Get page from user pool to keep kernel from running out of memory
         frame_table[i].frame = palloc_get_page(PAL_USER | PAL_ASSERT | PAL_ZERO);
         if (frame_table[i].frame == NULL) {
@@ -56,25 +63,21 @@ void *frame_get_page(void) {
             return frame_table[i].frame;
         }
     }
-    lock_release(&frame_table_lock);
+    // TODO: If no empty frames are found, evict a page
     // We could not find an unused frame, PANIC the kernel
     PANIC("Ran out of frames!");
+    lock_release(&frame_table_lock);
 }
 
 /* Frees a physical frame by marking it as unused. */
 void frame_free_page(void *frame) {
-    // TODO: Maybe do pointer arithmetic instead of looping
     lock_acquire(&frame_table_lock);
-    // Loop over frame table to find this frame frame
-    for (unsigned int i = 0; i < num_user_pages; i++) {
-        if (frame_table[i].frame == frame) {
-            frame_table[i].in_use = 0;
+    struct frame_table_entry *entry = get_frame_entry(frame);
+    if (entry == NULL) PANIC("Could not find frame to free!");
+    entry->in_use = 0;
 #ifndef NDEBUG
-            memset(frame, 0xcc, PGSIZE);
+            memset(frame, 0, PGSIZE);
 #endif
-            break;
-        }
-    }
     lock_release(&frame_table_lock);
     return;
 }
@@ -89,8 +92,7 @@ void frame_free_page(void *frame) {
 //     // TODO: Implement clock eviction policy
 //     struct frame_table_entry rand_frame = frame_table[rand() % num_user_pages];
 //     // Acquire lock before evicting
-//     lock_acquire(rand_frame.pin);
-//     lock_release(&frame_table_lock);
+//     lock_acquire(&rand_frame.pin);
 //     // Get supplemental page table entry
 //     struct supp_page_table_entry *sup_entry = find_entry(rand_frame.page, t);
 //     // Determine where to write i.e. swap or disk
@@ -104,7 +106,8 @@ void frame_free_page(void *frame) {
 //     pagedir_clear_page(t->pd, rand_frame.page);
 //     rand_frame.in_use = 0;
 //
-//     lock_release(rand_frame.pin);
+//     lock_release(&rand_frame.pin);
+//     lock_release(&frame_table_lock);
 //     // Return the frame address after clearing the frame
 //     return memset(rand_frame.frame, 0, PGSIZE);
 // }

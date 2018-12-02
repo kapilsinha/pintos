@@ -209,6 +209,19 @@ void process_exit(void) {
      */
     pd = cur->pagedir;
     if (pd != NULL) {
+        /* Free all virtual pages held by this thread. */
+        struct hash_iterator i;
+        hash_first(&i, &cur->supp_page_table);
+        while (hash_next(&i)) {
+            struct supp_page_table_entry *entry =
+                hash_entry(hash_cur(&i), struct supp_page_table_entry, elem);
+            /* Mark this frame as free. */
+            uint8_t *kpage = pagedir_get_page(pd, entry->page_addr);
+            if (kpage) frame_free_page(kpage);
+            /* Unmap this virtual page. This is not really necessary because
+                the thread is exiting anyway. */
+            pagedir_clear_page(pd, entry->page_addr);
+        }
         /* Correct ordering here is crucial.  We must set
          * cur->pagedir to NULL before switching page directories,
          * so that a timer interrupt can't switch back to the

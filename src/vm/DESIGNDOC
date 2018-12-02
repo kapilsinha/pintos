@@ -114,6 +114,11 @@ We also added the following member to the thread struct in thread.h:
 
 >> A4: When two user processes both need a new frame at the same time,
 >> how are races avoided?
+    Our frame_get_page function tries to acquire the frame_table_lock which is
+    only released after the function either found a free frame, or looped over
+    all of the frames and was unable to find an empty frame. Thus, we ensure
+    that only a single process can be inside the frame_get_page function looking
+    for a free frame at a time. 
 
 ---- RATIONALE ----
 
