@@ -317,6 +317,8 @@ bool load_stack(struct supp_page_table_entry *stack_entry) {
  */
 bool load_mmap(struct supp_page_table_entry *mmap_entry) {
     return load_exec(mmap_entry);
+}
+
 /*! Loads a file from swap back into memory. */
 bool load_swap(struct supp_page_table_entry *swap_entry) {
     uint8_t *upage = swap_entry->page_addr;
