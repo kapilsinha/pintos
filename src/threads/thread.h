@@ -163,6 +163,9 @@ struct thread {
     /*! Used for implementing virtual memory. */
     /**@{*/
     struct hash supp_page_table;   /*!< Supplemental page table. */
+    struct hash mmap_file_table;   /*!< Mem-map file table. */
+    /*!< Mapping of the next opened mmap file by this thread */
+    int mapping_next;
     /**@}*/
 
     /*! Owned by thread.c. */
