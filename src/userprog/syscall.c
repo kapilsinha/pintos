@@ -10,6 +10,7 @@
 #include "threads/palloc.h"
 #include "devices/input.h"
 #include "threads/malloc.h"
+#include "lib/debug.h"
 
 static void syscall_handler(struct intr_frame *f);
 uint32_t peek_stack(struct intr_frame *f, int back);
@@ -26,13 +27,6 @@ uint32_t peek_stack(struct intr_frame *f, int back);
  *  If there exists no entry but the virtual address indicates that it is
  *  trying to grow the stack, a stack page is added to the supp page table
  */
-/*
-int valid_pointer(void *vaddr) {
-    vaddr = pg_round_down(vaddr);
-    return (is_user_vaddr(vaddr) &&
-            find_entry(vaddr, thread_current()));
-}
-*/
 int valid_pointer(void *vaddr, struct intr_frame *f) {
     if (! is_user_vaddr(vaddr)) {
         return false;
@@ -73,6 +67,16 @@ int valid_pointer_range(void *vaddr, unsigned size, struct intr_frame *f) {
         cur_addr = upage + PGSIZE;
     }
     return true;
+}
+
+/*! Finds the corresponding supplemental page table entry for a given user page
+ *  and thread. If none are found, returns NULL.
+ */
+struct mmap_table_entry *find_mmap_entry(mapid_t mapping, struct thread *t) {
+    struct mmap_table_entry to_find;
+    to_find.mapping = mapping;
+    struct hash_elem *e = hash_find(&t->mmap_file_table, &to_find.elem);
+    return e != NULL ? hash_entry(e, struct mmap_table_entry, elem) : NULL;
 }
 
 /*! Peeks/accesses an element from the interrupt stack frame passed in. */
@@ -128,25 +132,28 @@ struct file *fd_to_file(struct thread *t, int fd) {
  *  a call to this function is followed by a call to thread_exit)
  */
 void exit_with_status(int status) {
-     /*
-      * If the parent is dead, this process's parent pointer should already
-      * point to NULL - in which case you don't have to update the parent
-      */
-     struct child_process *c = thread_get_child_process
-         (thread_current()->parent, thread_current()->tid);
-     if (thread_current()->parent) {
-         c->exit_status = status;
-     }
+    /*
+     * If the parent is dead, this process's parent pointer should already
+     * point to NULL - in which case you don't have to update the parent
+     */
+    struct child_process *c = thread_get_child_process
+        (thread_current()->parent, thread_current()->tid);
+    if (thread_current()->parent) {
+        c->exit_status = status;
+    }
 
-     /* Iterate over all of your children and set all their parents to NULL */
-     struct list_elem *e;
-     struct child_process *d;
-     for (e = list_begin(&thread_current()->children);
-          e != list_end(&thread_current()->children); e = list_next(e)) {
+    /* Iterate over all of your children and set all their parents to NULL */
+    struct list_elem *e;
+    struct child_process *d;
+    for (e = list_begin(&thread_current()->children);
+        e != list_end(&thread_current()->children); e = list_next(e)) {
         d = list_entry(e, struct child_process, elem);
         d->child->parent = NULL;
     }
+
     printf ("%s: exit(%d)\n", thread_current()->name, status);
+
+    /* Close all open files */
     while (!list_empty(&thread_current()->files)) {
         e = list_pop_back(&thread_current()->files);
         struct file_descriptor *f
@@ -156,6 +163,16 @@ void exit_with_status(int status) {
         /* Free the file descriptor's memory */
         free(f);
     }
+
+    /* Munmap all mmap files */
+    struct hash_iterator i;
+    hash_first (&i, &thread_current()->mmap_file_table);
+    while (hash_next (&i)) {
+        struct mmap_table_entry *entry
+            = hash_entry (hash_cur (&i), struct mmap_table_entry, elem);
+        sys_munmap(entry->mapping, NULL);
+    }
+
     sema_up(&c->signal);
  }
 
@@ -322,7 +339,8 @@ int sys_read(int fd, const void *buffer, unsigned size, struct intr_frame *f) {
     return bytes_read;
 }
 
-/*! System call for writing to a file descriptor. Writes directly to the
+/*! 
+ *  System call for writing to a file descriptor. Writes directly to the
  *  console if fd is set to 1. Returns the number of bytes written.
  *  If file not found, returns 0
  */
@@ -390,6 +408,138 @@ void sys_close(int fd, struct intr_frame *f UNUSED) {
     return;
 }
 
+/*!
+ *  Maps the file open at fd into the process' virtual address space.
+ *  Note: the file is mapped in consecutive virtual pages
+ */
+mapid_t sys_mmap(int fd, void *addr, struct intr_frame *f) {
+    struct thread *t = thread_current();
+    /* Stdin and stdout are not mappable */
+    if (fd == 0 || fd == 1) { 
+        return -1;
+    }
+
+    /* Get file struct */
+    struct file *original_file = fd_to_file(thread_current(), fd);
+    if (! original_file) {
+        return -1;
+    }
+
+    /* Fail if the file has a length of 0 */
+    off_t file_size = file_length(original_file);
+    if (file_size == 0) {
+        return -1;
+    }
+
+    /* Fail if addr is at 0 or is not page-aligned */
+    if (addr == 0 || addr != pg_round_down(addr)) {
+        return -1;
+    }
+
+    /* Fail if any address in [addr, addr + file_size] is already mapped */
+    void *cur_addr = addr;
+    int num_pages = 0;       // Number of virtual pages to allocate for the mmap
+    int last_page_bytes = 0; // Number of bytes to write to the final page
+    while (cur_addr < addr + file_size) {
+        /* If the cur_addr is already mapped, find_entry returns non-NULL
+         * and so we fail */
+        if (! is_user_vaddr(cur_addr) || find_entry(cur_addr, t)) {
+            return -1;
+        }
+        num_pages++;
+        last_page_bytes = addr + file_size - cur_addr;
+        cur_addr += PGSIZE;
+    }
+
+    /* Mapping must remain valid until munmap is called or process exists,
+     * so we obtain a new reference to the file for this mapping */
+    struct file *file = file_reopen(original_file);
+    
+    /* Now we know the mapping is valid, so we add it to the mmap_file_table */
+    struct mmap_table_entry * mmap_entry
+        = malloc(sizeof(struct mmap_table_entry));
+    if (mmap_entry == NULL) {
+        PANIC("Malloc of mmap_entry in sys_map failed");
+    }
+    mmap_entry->mapping = t->mapping_next;
+    t->mapping_next++;
+    mmap_entry->page_addr = addr;
+    mmap_entry->file_size = file_size;
+    mmap_entry->fd = fd;
+    mmap_entry->file = file;
+    struct hash_elem * mmap_elem
+        = hash_insert(&t->mmap_file_table, &mmap_entry->elem);
+    /* This mapping should not be present in the hash table;
+     * if it is, there may be repeated mappings */
+    if (mmap_elem != NULL) {
+        PANIC("This mmap mapping was already in the mmap hash table");
+    }
+
+    void *upage = addr;
+    int page_index = 0;
+    bool writable = true;
+    while (upage < addr + file_size) {
+        /* Calculate how to fill this page.
+           We will read PAGE_READ_BYTES bytes from FILE
+           and zero the final PAGE_ZERO_BYTES bytes. */
+        size_t page_read_bytes
+            = page_index == num_pages - 1 ? last_page_bytes : PGSIZE;
+        size_t page_zero_bytes = PGSIZE - page_read_bytes;
+
+        supp_add_mmap_entry(file, page_read_bytes, page_zero_bytes,
+                            writable, upage);
+
+        /* Advance. */
+        upage += PGSIZE;
+        page_index++;
+    }
+
+    return mmap_entry->mapping;
+}
+
+/*!
+ *  Unmaps the mapping designated by the mapid_t that was returned
+ *  by the mmap syscall
+ */
+void sys_munmap(mapid_t mapping, struct intr_frame *f UNUSED) {
+    struct thread *t = thread_current();
+    struct mmap_table_entry *mmap_entry 
+        = find_mmap_entry(mapping, thread_current());
+    void *addr = mmap_entry->page_addr;
+    off_t file_size = mmap_entry->file_size;
+
+    /* Determine if we have written to the file */
+    void *upage = addr;
+    bool dirty = false;
+    while (upage < addr + file_size) {
+        if (pagedir_is_dirty(thread_current()->pagedir, upage)) {
+            dirty = true;
+            break;
+        }
+        upage += PGSIZE;
+    }
+
+    /* Go to the start of the file and write the contents from upage
+     * if data was modified in memory */
+    if (dirty) {
+        file_seek(mmap_entry->file, 0);
+        file_write(mmap_entry->file, addr, file_size);
+    }
+
+    /* Close the files since we had reopened it earlier */
+    file_close(mmap_entry->file);
+
+    /* Delete the entries in both mmap and supplemental page tables */
+    hash_delete(&t->mmap_file_table, &mmap_entry->elem);
+    upage = addr;
+    struct supp_page_table_entry *entry;
+    while (upage < addr + file_size) {
+        entry = find_entry(upage, t);
+        hash_delete(&t->supp_page_table, &entry->elem);
+        upage += PGSIZE;
+    }
+}
+
 /*! Called for system calls that are not implemented. */
 void sys_nosys(struct intr_frame *f UNUSED) {
     printf("ENOSYS: Function not implemented.\n");
@@ -408,6 +558,8 @@ static void syscall_handler(struct intr_frame *f) {
     unsigned int size, initial_size, position;
     int status;
     tid_t pid;
+    void *addr;
+    mapid_t mapping;
     /* Peek the syscall number from the interrupt stack frame */
     uint32_t call_num = peek_stack(f, 0);
     switch (call_num) {
@@ -483,6 +635,17 @@ static void syscall_handler(struct intr_frame *f) {
         case SYS_CLOSE:
             fd = (int) peek_stack(f, 1);
             sys_close(fd, f);
+            break;
+
+        case SYS_MMAP:
+            fd = (int) peek_stack(f, 1);
+            addr = (void *) peek_stack(f, 2);
+            f->eax = sys_mmap(fd, addr, f);
+            break;
+
+        case SYS_MUNMAP:
+            mapping = (mapid_t) peek_stack(f, 1);
+            sys_munmap(mapping, f);
             break;
 
         default:

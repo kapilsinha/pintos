@@ -30,6 +30,23 @@ bool vaddr_less (const struct hash_elem *a_, const struct hash_elem *b_,
     return a->page_addr < b->page_addr;
 }
 
+/*! Hash function for the supplemental page table. */
+unsigned mmap_hash (const struct hash_elem *v_, void *aux UNUSED) {
+    const struct mmap_table_entry *v
+        = hash_entry(v_, struct mmap_table_entry, elem);
+    return hash_int(v->mapping);
+}
+
+/*! Returns true if mmap page a's mapping is less than that of page b. */
+bool mmap_less (const struct hash_elem *a_, const struct hash_elem *b_,
+    void *aux UNUSED) {
+    const struct mmap_table_entry *a
+        = hash_entry (a_, struct mmap_table_entry, elem);
+    const struct mmap_table_entry *b
+        = hash_entry (b_, struct mmap_table_entry, elem);
+    return a->mapping < b->mapping;
+}
+
 /* Helper functions */
 
 /*! Finds the corresponding supplemental page table entry for a given user page
@@ -120,7 +137,7 @@ void supp_add_exec_entry(struct file *f, uint32_t page_data_bytes,
 void supp_add_stack_entry(void *page_addr) {
     struct thread * t = thread_current();
     if (! is_user_vaddr(page_addr)) {
-        PANIC("Page address is not in user space in add_exec_entry");
+        PANIC("Page address is not in user space in add_stack_entry");
     }
     struct supp_page_table_entry * stack_entry
         = malloc(sizeof(struct supp_page_table_entry));
@@ -139,6 +156,40 @@ void supp_add_stack_entry(void *page_addr) {
      * if it is, there may be bugs in the stack growth */
     if (elem != NULL) {
         PANIC("This stack vaddr was already in the hash table");
+    }
+}
+
+/*!
+ *  Adds a supplemental page table entry for when an mmap page is created
+ *  Note: mmap pages are never in swap - they are either in physical memory
+ *  or in the backing file
+ */
+void supp_add_mmap_entry(struct file *f, uint32_t page_data_bytes,
+    uint32_t page_zero_bytes, bool writable, void *page_addr) {
+    struct thread * t = thread_current();
+    if (! is_user_vaddr(page_addr)) {
+        PANIC("Page address is not in user space in add_mmap_entry");
+    }
+    struct supp_page_table_entry * mmap_entry
+        = malloc(sizeof(struct supp_page_table_entry));
+    if (mmap_entry == NULL) {
+        PANIC("Malloc of supp_page_table_entry in add_mmap_entry failed");
+    }
+    mmap_entry->type = PAGE_SOURCE_MMAP;
+    mmap_entry->page_addr = page_addr;
+    mmap_entry->save_loc = 0;
+    mmap_entry->load_loc = 0;
+    mmap_entry->eviction_status = 1;
+    mmap_entry->bf.file = f;
+    mmap_entry->bf.page_data_bytes = page_data_bytes;
+    mmap_entry->bf.page_zero_bytes = page_zero_bytes;
+    mmap_entry->bf.writable = writable;
+    struct hash_elem * supp_elem
+        = hash_insert(&t->supp_page_table, &mmap_entry->elem);
+    /* This mapping should not be present in the hash table;
+     * if it is, there may be overlapping mmap files */
+    if (supp_elem != NULL) {
+        PANIC("This mmap vaddr was already in the supp hash table");
     }
 }
 
@@ -171,13 +222,17 @@ bool handle_page_fault(void *page_addr, struct intr_frame *f) {
     if (entry->type == PAGE_SOURCE_STACK && entry->load_loc == 0) {
         return load_stack(entry);
     }
+    if (entry->type == PAGE_SOURCE_MMAP) {
+        return load_mmap(entry);
+    }
     if (entry->load_loc == 1) {
         return load_swap(entry);
     }
     PANIC("Haven't handled this kind of page fault yet");
 }
 
-/*! Load an executable source page to physical memory
+/*!
+ *  Load an executable source page to physical memory
  *  This function should be called upon a page fault to bring
  *  into memory a certain page.
  *  Returns true if executable loads properly, else false
@@ -188,6 +243,13 @@ bool load_exec(struct supp_page_table_entry *exec_entry) {
     size_t page_zero_bytes = exec_entry->bf.page_zero_bytes;
     bool writable = exec_entry->bf.writable;
     uint8_t *upage = exec_entry->page_addr;
+    /*
+    printf("Page address: %p\n", upage);
+    printf("Page read bytes: %d\n", page_read_bytes);
+    printf("Page zero bytes: %d\n", page_zero_bytes);
+    printf("Writable: %d\n", writable);
+    printf("File length: %d\n", file_length(file));
+    */
 
     // Get a page of memory.
     uint8_t *kpage = frame_get_page();
@@ -205,17 +267,18 @@ bool load_exec(struct supp_page_table_entry *exec_entry) {
         return false;
     }
 
-    memset(kpage + page_read_bytes, 0, page_zero_bytes);
-
     // Add the page to the process's address space.
     if (!install_page(upage, kpage, writable)) {
         frame_free_page(kpage);
         return false;
     }
+
+    memset(kpage + page_read_bytes, 0, page_zero_bytes);
     return true;
 }
 
-/*! Load a stack page to physical memory
+/*!
+ *  Load a stack page to physical memory
  *  This function should be called upon a page fault to bring
  *  in a certain stack page into memory.
  *  Returns true if stack page load properly, else false
@@ -241,9 +304,19 @@ bool load_stack(struct supp_page_table_entry *stack_entry) {
         frame_free_page(kpage);
         return false;
     }
+
+    memset(kpage, 0, PGSIZE);
     return true;
 }
 
+/*!
+ *  Load an mmap page to physical memory
+ *  This function should be called upon a page fault to bring
+ *  in a certain mmap page into memory.
+ *  Returns true if mmap page loads properly, else false
+ */
+bool load_mmap(struct supp_page_table_entry *mmap_entry) {
+    return load_exec(mmap_entry);
 /*! Loads a file from swap back into memory. */
 bool load_swap(struct supp_page_table_entry *swap_entry) {
     uint8_t *upage = swap_entry->page_addr;

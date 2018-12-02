@@ -19,6 +19,8 @@
     Used to detect stack overflow.  See the big comment at the top
     of thread.h for details. */
 #define THREAD_MAGIC 0xcd6abf4b
+#define MIN_FILE_FD 3
+#define MIN_MAPPING 1
 
 /*! List of processes in THREAD_READY state, that is, processes
     that are ready to run but not actually running. */
@@ -193,12 +195,16 @@ tid_t child_thread_create(const char *name, int priority, thread_func *function,
     /* Initialize the list of children */
     list_init(&t->children);
 
-    /* Initialize the hash table. */
+    /* Initialize the hash tables. */
     hash_init(&t->supp_page_table, &vaddr_hash, &vaddr_less, NULL);
+    hash_init(&t->mmap_file_table, &mmap_hash, &mmap_less, NULL);
+
+    /* Initialize the mappings (first mapping is 1) */
+    t->mapping_next = MIN_MAPPING;
 
     /* Initialize the list of file descriptors and the file descriptor */
     list_init(&t->files);
-    t->fd_next = 3;
+    t->fd_next = MIN_FILE_FD;
 
     /* Set parent of this thread we are creating to current thread */
     t->parent = thread_current();
