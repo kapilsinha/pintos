@@ -12,6 +12,7 @@
 #include "threads/interrupt.h"
 #include "threads/synch.h"
 #include "threads/thread.h"
+#include "vm/frame.h"
   
 #if TIMER_FREQ < 19
 #error 8254 timer requires TIMER_FREQ >= 19
@@ -19,6 +20,9 @@
 #if TIMER_FREQ > 1000
 #error TIMER_FREQ <= 1000 recommended
 #endif
+
+// Clear access bits of every frame every 1000 ticks
+#define CLEAR_ACCESS_BITS_TICKS 1000
 
 /*! Number of timer ticks since OS booted. */
 static int64_t ticks;
@@ -136,11 +140,14 @@ void timer_ndelay(int64_t ns) {
 void timer_print_stats(void) {
     printf("Timer: %"PRId64" ticks\n", timer_ticks());
 }
-
+
 /*! Timer interrupt handler. */
 static void timer_interrupt(struct intr_frame *args UNUSED) {
     ticks++;
     thread_tick();
+    if (ticks % CLEAR_ACCESS_BITS_TICKS == 0) {
+        frame_clear_access_bits();
+    }
 }
 
 /*! Returns true if LOOPS iterations waits for more than one timer tick,
