@@ -37,7 +37,6 @@ void swap_table_init(void) {
  */
 size_t swap_get_slot(void) {
     size_t slot = bitmap_scan(swap_table, 0, 1, false);
-    // printf("Got slot %zu\n", slot);
     if (slot == BITMAP_ERROR) {
         PANIC("Swap table is full!");
     }
@@ -51,17 +50,15 @@ size_t swap_get_slot(void) {
  */
 size_t swap_write(void *upage) {
     lock_acquire(&swap_lock);
-    size_t slot = swap_get_slot() * 8;
-    // printf("Marking slot %zu\n", slot / 8);
-    bitmap_mark(swap_table, slot / 8);
-    // Buffer for one block
+    size_t slot = swap_get_slot() * NUM_SECTORS;
+    bitmap_mark(swap_table, slot / NUM_SECTORS);
     void *buffer = malloc(BLOCK_SECTOR_SIZE);
     if (!buffer) PANIC("Could not allocate buffer for swap_write!");
-    // Write to the swap block, beginning at sector "slot"
-    for (int i = 0; i < 8; i++) {
-        // Copy over file contents to the buffer
+    /* Write to the swap block, beginning at sector "slot". */
+    for (int i = 0; i < NUM_SECTORS; i++) {
+        /* Copy over file contents to the buffer. */
         memcpy(buffer, upage, BLOCK_SECTOR_SIZE);
-        // Write the buffer to swap
+        /* Write the buffer to swap. */
         block_write(swap, slot + i, buffer);
         upage += BLOCK_SECTOR_SIZE;
     }
@@ -76,25 +73,21 @@ size_t swap_write(void *upage) {
  */
 void swap_read(void *upage, size_t slot) {
     lock_acquire(&swap_lock);
-    ASSERT(slot % 8 == 0);
-    ASSERT(bitmap_test(swap_table, slot / 8));
-    // Buffer for one block
+    ASSERT(slot % NUM_SECTORS == 0);
+    ASSERT(bitmap_test(swap_table, slot / NUM_SECTORS));
+    /* Buffer for one block. */
     void *buffer = malloc(BLOCK_SECTOR_SIZE);
     if (!buffer) PANIC("Could not allocate buffer for swap_read!");
-    // Write to the swap block, beginning at sector "slot"
+    /* Read from the swap block, beginning at sector "slot" */
     for (int i = 0; i < 8; i++) {
+        /* Read into the buffer. */
         block_read(swap, slot + i, buffer);
-        // Copy over file contents to the buffer
+        /* Copy over file contents to the page. */
         memcpy(upage, buffer, BLOCK_SECTOR_SIZE);
-        // Write the buffer to swap
         upage += BLOCK_SECTOR_SIZE;
     }
     free(buffer);
-    bitmap_reset(swap_table, slot / 8);
+    bitmap_reset(swap_table, slot / NUM_SECTORS);
     lock_release(&swap_lock);
     return;
 }
-
-/*
- * Add other functions
- */

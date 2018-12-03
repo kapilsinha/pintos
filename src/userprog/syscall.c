@@ -334,15 +334,10 @@ int sys_read(int fd, const void *buffer, unsigned size, struct intr_frame *f) {
         return -1;
     }
     int32_t bytes_read = file_read(file, (void *) buffer, size);
-    /*
-    if ((unsigned) bytes_read < size) {
-        return 0;
-    }
-    */
     return bytes_read;
 }
 
-/*! 
+/*!
  *  System call for writing to a file descriptor. Writes directly to the
  *  console if fd is set to 1. Returns the number of bytes written.
  *  If file not found, returns 0
@@ -418,7 +413,7 @@ void sys_close(int fd, struct intr_frame *f UNUSED) {
 mapid_t sys_mmap(int fd, void *addr, struct intr_frame *f UNUSED) {
     struct thread *t = thread_current();
     /* Stdin and stdout are not mappable */
-    if (fd == 0 || fd == 1) { 
+    if (fd == 0 || fd == 1) {
         return -1;
     }
 
@@ -457,7 +452,7 @@ mapid_t sys_mmap(int fd, void *addr, struct intr_frame *f UNUSED) {
     /* Mapping must remain valid until munmap is called or process exists,
      * so we obtain a new reference to the file for this mapping */
     struct file *file = file_reopen(original_file);
-    
+
     /* Now we know the mapping is valid, so we add it to the mmap_file_table */
     struct mmap_table_entry * mmap_entry
         = malloc(sizeof(struct mmap_table_entry));
@@ -506,7 +501,7 @@ mapid_t sys_mmap(int fd, void *addr, struct intr_frame *f UNUSED) {
  */
 void sys_munmap(mapid_t mapping, struct intr_frame *f UNUSED) {
     struct thread *t = thread_current();
-    struct mmap_table_entry *mmap_entry 
+    struct mmap_table_entry *mmap_entry
         = find_mmap_entry(mapping, thread_current());
     void *addr = mmap_entry->page_addr;
     off_t file_size = mmap_entry->file_size;
@@ -534,7 +529,7 @@ void sys_munmap(mapid_t mapping, struct intr_frame *f UNUSED) {
 
     /* Delete the entries in both mmap and supplemental page tables */
     hash_delete(&t->mmap_file_table, &mmap_entry->elem);
-    
+
     /* Remove the elements in the supplemental page table corresponding
      * to the virtual addresses that the mmap file had occupied */
     upage = addr;

@@ -97,7 +97,7 @@ void supp_add_mmap_entry(struct file *f, uint32_t page_data_bytes,
 
 /* Handles a generic page fault */
 bool handle_page_fault(void *page_addr, struct intr_frame *f);
-/* Load an executable source page to physical memory */
+/* Load an executable or mmap source page to physical memory */
 bool load_from_file(struct supp_page_table_entry * exec_entry);
 /* Load a stack source page to physical memory */
 bool load_stack(struct supp_page_table_entry * stack_entry);
