@@ -25,7 +25,7 @@ Kapil Sinha <ksinha@caltech.edu>
 
 >> If you have any preliminary comments on your submission, notes for the
 >> TAs, or extra credit, please give them here.
-    Certain tests only passed on one of our team members computers. We were
+    Certain tests only passed on one of our team members' computers. We were
     ultimately able to pass all of the tests consistently but only on one of
     our computers and the other team member's computer was very inconsistent
     with which tests it passed and failed. Some of the tests that only passed
@@ -36,7 +36,7 @@ Kapil Sinha <ksinha@caltech.edu>
     page-syn-read
 
     We implemented the NRU policy (using the timer tick to clear access
-    bits), in addition to the clock eviction policy for extra credit.
+    bits), in addition to the clock eviction policy, for extra credit.
 
 >> Please cite any offline or online sources you consulted while
 >> preparing your submission, other than the Pintos documentation, course
@@ -117,8 +117,7 @@ struct supp_page_table_entry {
     void *page_addr;         // Virtual page address
     bool save_loc;           // 1 to save to swap, 0 to save to backing file
     bool load_loc;           // 1 to load from swap, 0 to load from backing file
-    int eviction_status;     // 1 if page is evicted, 0 if it is in memory,
-                             // 2 if in the process of evicting
+    bool eviction_status;    // 1 if page is evicted, 0 if it is in memory
     struct lock evict_lock;  // If in process of evicting, acquire this lock
     size_t swap_slot;        // Swap slot that contains this page if load_loc=1
     struct backing_file bf;  // Data to read/write to backing file
@@ -161,12 +160,12 @@ We also added the following members to the thread struct in thread.h:
 >> how are races avoided?
 
     Our frame_get_page function tries to acquire the frame_table_lock which is
-    released if a page is found and the function returns an empty frame or if
-    no frames are found in which case a page needs to be evicted. We use a
-    separate lock for eviction to satisfy the condition "page faults that do not
-    require I/O should not be blocked by page faults that do need I/O".
+    released either if a page is found and the function returns an empty frame
+    or if no frames are found, in which case a page needs to be evicted. We use
+    a separate lock for eviction to satisfy the condition "page faults that do
+    not require I/O should not be blocked by page faults that do need I/O".
     Having the frame_table_lock while we loop over the frame table prevents race
-    conditions since two processes will not be searching for an empty frame at
+    conditions since two processes will not be scanning for an empty frame at
     the same time.
 
 ---- RATIONALE ----
@@ -184,7 +183,7 @@ We also added the following members to the thread struct in thread.h:
     that not all of the members of the struct will be used by each entry.
 
     We created a frame table array to map frames to the threads and their
-    virtual pages. We maintain this as an array since we need to scan the
+    virtual pages. We maintain this as a simple array since we need to scan the
     frame table periodically anyway to update each element (e.g. the access
     bits) - and Donnie tells us to keep our lives simple :)
 
@@ -212,19 +211,21 @@ struct backing_file {
 
 >> B2: When a frame is required but none is free, some frame must be
 >> evicted.  Describe your code for choosing a frame to evict.
-We implemented both the clock and NRU policies:
-Clock eviction policy: We maintain a pseudo-circular queue and loop over the
-frame table starting from our current clock hand (which is saved from the
-last eviction we made). We mark the page's access bits as not accessed when
-we encounter the page until we hit one that is already not accessed, and then
-evict that page.
-NRU policy: We clear the access bits for each virtual page mapped to one of
-our physical frames periodically (every few timer ticks). Then when it is time
-to evict a page, we loop over the frames (starting from a random frame), and
-try to find the page that is of lowest class (class 0 is NA, ND),
-(class 1 is NA, D), (class 2 is A, ND), (class 3 is A, D) - where A is accessed
-and D is dirty. We simply keep track of the best frame for each class as we
-loop over the frames, so we only require a single pass.
+
+    We implemented both the clock and NRU policies:
+    Clock eviction policy: We maintain a pseudo-circular queue and loop over
+    the frame table starting from our current clock hand (which is saved from
+    the last eviction we made). We mark the page's access bits as not accessed
+    when we encounter the page until we hit one that is not accessed, and then
+    evict that page. We save our clock hand at this last location.
+    NRU policy: We clear the access bits for each virtual page mapped to one of
+    our physical frames periodically (every few timer ticks). Then when it is 
+    time to evict a page, we loop over the frames (starting from a random
+    frame), and try to find the page that is of lowest class
+    (class 0 is NA, ND), (class 1 is NA, D), (class 2 is A, ND),
+    (class 3 is A, D) - where A is accessed and D is dirty. We simply keep
+    track of the best frame for each class as we loop over the frames, so we
+    only require a single pass.
 
 >> B3: When a process P obtains a frame that was previously used by a
 >> process Q, how do you adjust the page table (and any other data
@@ -234,10 +235,11 @@ loop over the frames, so we only require a single pass.
     information about the thread currently using that frame and the user virtual
     address that maps to that frame. We use these values to find the
     corresponding supplemental page table entry and update it to reflect that
-    this virtual address is no longer mapped and that it has been evicted. We
+    this virtual address is no longer mapped and that it has been evicted. Thus
+    we update that process Q no longer has this frame and that now P does. We
     also call pagedir_clear_page to clear the mapping for the old process Q so
     that next time it tries to access this virtual address, it page faults so
-    and we can swap it back in.
+    we can swap it back in.
 
 >> B4: Explain your heuristic for deciding whether a page fault for an
 >> invalid virtual address should cause the stack to be extended into
@@ -248,7 +250,9 @@ loop over the frames, so we only require a single pass.
     checks if the faulting address is a valid user address and if it is either
     greater than the current stack pointer or equal to the stack pointer minus 4
     or minus 32. We check if it is equal to the stack pointer minus 4 or minus
-    32 for the push and pusha instructions respectively.
+    32 for the push and pusha instructions respectively. Of course, a user
+    program can modify its stack above the stack pointer, so we handle page
+    faults above the stack pointer too.
 
 ---- SYNCHRONIZATION ----
 
@@ -259,7 +263,7 @@ loop over the frames, so we only require a single pass.
 
     We have designed our VM system to avoid circular waiting without which it is
     impossible to have a deadlock. If a process needs to get a new frame, then
-    it acquires the frame table lock and if there are no frames, it will release
+    it acquires the frame table lock and if there are no frames, it releases
     this lock before acquiring the eviction lock. Neither of these locks can
     cause a circular wait because all processes will always try to acquire them
     in that order. The locks for writing or reading from swap cannot cause a
@@ -282,14 +286,23 @@ loop over the frames, so we only require a single pass.
 >> the file system or swap.  How do you ensure that a second process Q
 >> cannot interfere by e.g. attempting to evict the frame while it is
 >> still being read in?
-
-
+    The evicting process and loading a file share a lock, so when
+    process P begins to read in a file, it acquires a lock on this frame.
+    Process Q cannot evict this frame until the evicting process has finished
+    and released the lock on this frame.
 
 >> B8: Explain how you handle access to paged-out pages that occur
 >> during system calls.  Do you use page faults to bring in pages (as
 >> in user programs), or do you have a mechanism for "locking" frames
 >> into physical memory, or do you use some other design?  How do you
 >> gracefully handle attempted accesses to invalid virtual addresses?
+    We have defined a valid_pointer function that checks each virtual
+    address we are attempting to access in our supplemental page table.
+    If the address exists, we know that the virtual address is valid;
+    otherwise, we simply exit the process. Beyond this, we do use page
+    faults to bring in pages, but since we have already checked that
+    these virtual addresses are valid, we know that the handler should
+    bring in a valid page into memory.
 
 ---- RATIONALE ----
 
@@ -298,6 +311,18 @@ loop over the frames, so we only require a single pass.
 >> complicates synchronization and raises the possibility for deadlock
 >> but allows for high parallelism.  Explain where your design falls
 >> along this continuum and why you chose to design it this way.
+    Our implementation is certainly in the middle of this spectrum, but is
+    likely on the side of having fewer locks. For example, we lock some 
+    processes like the scanning the frame table. We do have several locks
+    in our final implementation based on race conditions we considered
+    (e.g. a frame that is being evicted finishes being evicted even if 
+    another process attempts to access it or load it back in, etc.) so
+    we have taken great care to avoid race conditions. We designed the
+    system in a way such that page faults that require I/O do not block
+    other page faults that don't or processes that do not fault using
+    these locks; in this way, we enabled parallelism. But we have
+    relatively few locks and attempted to solve these issues simply
+    to avoid deadlock.
 
 			 MEMORY MAPPED FILES
 			 ===================
@@ -307,15 +332,42 @@ loop over the frames, so we only require a single pass.
 >> C1: Copy here the declaration of each new or changed `struct' or
 >> `struct' member, global or static variable, `typedef', or
 >> enumeration.  Identify the purpose of each in 25 words or less.
+struct mmap_table_entry {
+    mapid_t mapping;         // Mapping ID of this mmap entry
+    void *page_addr;         /* Virtual page address */
+    off_t file_size;         /* Size of the backing file */
+    int fd;                  // File descriptor of this mmap file
+    struct file *file;       /* File struct for the backing file */
+    struct hash_elem elem;   // Element for hash table
+};
 
 ---- ALGORITHMS ----
 
 >> C2: Describe how memory mapped files integrate into your virtual
 >> memory subsystem.  Explain how the page fault and eviction
 >> processes differ between swap pages and other pages.
+    We designed a general system to handle page faults and evictions
+    and loads, so the memory mapped file actually fits in quite
+    closely to the logic we have in place for executables and stack
+    pages. The main difference between memory mapped files and
+    executables in the virtual memory subsystem is that memory
+    mapped files are written back to the backing file in page eviction
+    and process exit (as opposed to being written back to swap or
+    discarded, respectively). Thus loads and evictions for memory mapped
+    files are always done from and to the backing file, while this varies
+    for executables.
 
 >> C3: Explain how you determine whether a new file mapping overlaps
 >> any existing segment.
+    In a mmap syscall, we know where we are attempting to install the
+    mapping in virtual memory and what size the mapping is. Thus we
+    easily calculate the addresses of all the pages that would belong
+    in this mapping. Then we simply iterate over the supplemental
+    page table for the current thread and ensure that none of the virtual
+    pages we attempt to map are in the supplemental page table - and
+    thus we check for any overlaps in the virtual address space for
+    the current process. Only if the mapping does not overlap with
+    an existing segment do we go through with the memory mapping.
 
 ---- RATIONALE ----
 
@@ -325,6 +377,12 @@ loop over the frames, so we only require a single pass.
 >> that much of their implementation can be shared.  Explain why your
 >> implementation either does or does not share much of the code for
 >> the two situations.
+    Our implementation does share a lot of the code between mmap and
+    executables. The loading of both is identical; we call the same
+    function to load a page using its supplemental page table entry.
+    The eviction is also similar, except that in the mmap files, we
+    always write back to the backing file (which we do not do for
+    executables).
 
 			   SURVEY QUESTIONS
 			   ================
@@ -337,16 +395,30 @@ penalized.  We can't fix things until we know about them.  :-)
 
 >> In your opinion, was this assignment, or any of the parts of it, too
 >> easy or too hard?  Did it take too long or too little time?
+    Took a long time (not as much as last assignment) and most of the bugs
+    were inconsistent and not very relevant to the material of this 
+    assignment. They were more inconsequential bugs e.g. deallocation of
+    our hash table or nuances of the read syscall.
 
 >> Did you find that working on a particular part of the assignment gave
 >> you greater insight into some aspect of OS design?
-
+    Yes, the overall assignment definitely helped me understand how virtual
+    addresses are related to physical addresses and how this is managed
+    with so many threads. Certainly though we realized that there is much
+    we don't understand!
 >> Were there any parts of the assignment that you felt were unnecessarily
 >> tedious or pointless?
+    See answer to the first question.
 
 >> Is there some particular fact or hint we should give students in
 >> future quarters to help them solve the problems?  Conversely, did you
 >> find any of our guidance to be misleading?
+    Most of the hints are helpful - perhaps some hints of what may be wrong
+    if a certain test is not passing would be helpful. It definitely seems
+    like some issues are common and very characteristic of certain tests.
+    Also the Piazza mentioned using file_reopen to load an executable
+    segment; this was very helpful and it would have been very difficult
+    to realize this independently.
 
 >> Do you have any suggestions for the instructor and/or TAs to more
 >> effectively assist students, either for future quarters or the remaining
