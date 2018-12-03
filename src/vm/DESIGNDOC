@@ -219,7 +219,7 @@ struct backing_file {
     when we encounter the page until we hit one that is not accessed, and then
     evict that page. We save our clock hand at this last location.
     NRU policy: We clear the access bits for each virtual page mapped to one of
-    our physical frames periodically (every few timer ticks). Then when it is 
+    our physical frames periodically (every few timer ticks). Then when it is
     time to evict a page, we loop over the frames (starting from a random
     frame), and try to find the page that is of lowest class
     (class 0 is NA, ND), (class 1 is NA, D), (class 2 is A, ND),
@@ -296,6 +296,7 @@ struct backing_file {
 >> in user programs), or do you have a mechanism for "locking" frames
 >> into physical memory, or do you use some other design?  How do you
 >> gracefully handle attempted accesses to invalid virtual addresses?
+
     We have defined a valid_pointer function that checks each virtual
     address we are attempting to access in our supplemental page table.
     If the address exists, we know that the virtual address is valid;
@@ -311,11 +312,12 @@ struct backing_file {
 >> complicates synchronization and raises the possibility for deadlock
 >> but allows for high parallelism.  Explain where your design falls
 >> along this continuum and why you chose to design it this way.
+
     Our implementation is certainly in the middle of this spectrum, but is
-    likely on the side of having fewer locks. For example, we lock some 
+    likely on the side of having fewer locks. For example, we lock some
     processes like the scanning the frame table. We do have several locks
     in our final implementation based on race conditions we considered
-    (e.g. a frame that is being evicted finishes being evicted even if 
+    (e.g. a frame that is being evicted finishes being evicted even if
     another process attempts to access it or load it back in, etc.) so
     we have taken great care to avoid race conditions. We designed the
     system in a way such that page faults that require I/O do not block
@@ -332,6 +334,7 @@ struct backing_file {
 >> C1: Copy here the declaration of each new or changed `struct' or
 >> `struct' member, global or static variable, `typedef', or
 >> enumeration.  Identify the purpose of each in 25 words or less.
+
 struct mmap_table_entry {
     mapid_t mapping;         // Mapping ID of this mmap entry
     void *page_addr;         /* Virtual page address */
@@ -346,6 +349,7 @@ struct mmap_table_entry {
 >> C2: Describe how memory mapped files integrate into your virtual
 >> memory subsystem.  Explain how the page fault and eviction
 >> processes differ between swap pages and other pages.
+
     We designed a general system to handle page faults and evictions
     and loads, so the memory mapped file actually fits in quite
     closely to the logic we have in place for executables and stack
@@ -359,6 +363,7 @@ struct mmap_table_entry {
 
 >> C3: Explain how you determine whether a new file mapping overlaps
 >> any existing segment.
+
     In a mmap syscall, we know where we are attempting to install the
     mapping in virtual memory and what size the mapping is. Thus we
     easily calculate the addresses of all the pages that would belong
@@ -377,6 +382,7 @@ struct mmap_table_entry {
 >> that much of their implementation can be shared.  Explain why your
 >> implementation either does or does not share much of the code for
 >> the two situations.
+
     Our implementation does share a lot of the code between mmap and
     executables. The loading of both is identical; we call the same
     function to load a page using its supplemental page table entry.
@@ -395,17 +401,20 @@ penalized.  We can't fix things until we know about them.  :-)
 
 >> In your opinion, was this assignment, or any of the parts of it, too
 >> easy or too hard?  Did it take too long or too little time?
+
     Took a long time (not as much as last assignment) and most of the bugs
-    were inconsistent and not very relevant to the material of this 
+    were inconsistent and not very relevant to the material of this
     assignment. They were more inconsequential bugs e.g. deallocation of
     our hash table or nuances of the read syscall.
 
 >> Did you find that working on a particular part of the assignment gave
 >> you greater insight into some aspect of OS design?
+
     Yes, the overall assignment definitely helped me understand how virtual
     addresses are related to physical addresses and how this is managed
     with so many threads. Certainly though we realized that there is much
     we don't understand!
+
 >> Were there any parts of the assignment that you felt were unnecessarily
 >> tedious or pointless?
     See answer to the first question.
@@ -413,6 +422,7 @@ penalized.  We can't fix things until we know about them.  :-)
 >> Is there some particular fact or hint we should give students in
 >> future quarters to help them solve the problems?  Conversely, did you
 >> find any of our guidance to be misleading?
+
     Most of the hints are helpful - perhaps some hints of what may be wrong
     if a certain test is not passing would be helpful. It definitely seems
     like some issues are common and very characteristic of certain tests.
