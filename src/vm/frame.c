@@ -45,7 +45,7 @@ struct frame_table_entry *get_frame_entry(void *frame) {
  *  in the frame table
  */
 void frame_clear_access_bits(void) {
-    for (int i = 0; i < num_user_pages; i++) {
+    for (int i = 0; i < (int) num_user_pages; i++) {
         struct frame_table_entry *frame = &frame_table[i];
         pagedir_set_accessed(frame->t->pagedir, frame->page, false);
     }
@@ -152,12 +152,12 @@ void *frame_get_page(void) {
             return frame_table[i].frame;
         }
     }
+    lock_release(&frame_table_lock);
     // If no empty frames are found, evict a page
     lock_acquire(&evict_lock);
     struct frame_table_entry *evicted = evict_page();
     lock_release(&evict_lock);
     evicted->in_use = 1;
-    lock_release(&frame_table_lock);
     return evicted->frame;
 }
 
