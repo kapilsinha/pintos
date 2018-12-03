@@ -13,6 +13,7 @@ struct frame_table_entry {
     struct thread *t;           // Thread that is currently using this frame
 };
 
+/* Frame table that contains all the frames. */
 struct frame_table_entry *frame_table;
 
 struct frame_table_entry *get_frame_entry(void *frame);

@@ -132,6 +132,7 @@ struct frame_table_entry *evict_page(void) {
     struct supp_page_table_entry *sup_entry = find_entry(rand_frame->page, t);
     if (!sup_entry) PANIC("Didn't find entry in evict_page");
     sup_entry->eviction_status = 2;
+    lock_acquire(&sup_entry->evict_lock);
     // Determine where to write i.e. swap or disk
     if (sup_entry->save_loc == 1) {// Save to swap
         size_t slot = swap_write(rand_frame->page);
@@ -143,6 +144,7 @@ struct frame_table_entry *evict_page(void) {
         sup_entry->load_loc = 0;
     }
     // Mark as evicted
+    lock_release(&sup_entry->evict_lock);
     sup_entry->eviction_status = 1;
     lock_release(&rand_frame->pin);
     // Return the frame address after clearing the frame
