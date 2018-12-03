@@ -84,7 +84,7 @@ void frame_free_page(void *frame) {
     if (entry == NULL) PANIC("Could not find frame to free!");
     entry->in_use = 0;
 #ifndef NDEBUG
-            memset(frame, 0, PGSIZE);
+            memset(frame, 0xcc, PGSIZE);
 #endif
     lock_release(&frame_table_lock);
     return;
@@ -95,9 +95,9 @@ void frame_free_page(void *frame) {
  * just evicted. Assumes that all frames are being used.
  */
 struct frame_table_entry *evict_page(void) {
-    struct thread *t = thread_current();
     // TODO: Implement clock eviction policy
     struct frame_table_entry *rand_frame = &frame_table[random_ulong() % num_user_pages];
+    struct thread *t = rand_frame->t;
     // Acquire lock before evicting
     lock_acquire(&rand_frame->pin);
     // Get supplemental page table entry
@@ -107,7 +107,7 @@ struct frame_table_entry *evict_page(void) {
     sup_entry->eviction_status = 2;
     // Determine where to write i.e. swap or disk
     if (sup_entry->save_loc == 1) {// Save to swap
-        int slot = swap_write(rand_frame->page);
+        size_t slot = swap_write(rand_frame->page);
         sup_entry->swap_slot = slot;
         sup_entry->load_loc = 1;
     }
