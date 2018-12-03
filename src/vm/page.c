@@ -30,6 +30,12 @@ bool vaddr_less (const struct hash_elem *a_, const struct hash_elem *b_,
     return a->page_addr < b->page_addr;
 }
 
+void hash_free_supp_entry(struct hash_elem *e, void *aux UNUSED) {
+    struct supp_page_table_entry *sup_entry =
+        hash_entry(e, struct supp_page_table_entry, elem);
+    free(sup_entry);
+}
+
 /*! Hash function for the supplemental page table. */
 unsigned mmap_hash (const struct hash_elem *v_, void *aux UNUSED) {
     const struct mmap_table_entry *v
@@ -45,6 +51,13 @@ bool mmap_less (const struct hash_elem *a_, const struct hash_elem *b_,
     const struct mmap_table_entry *b
         = hash_entry (b_, struct mmap_table_entry, elem);
     return a->mapping < b->mapping;
+}
+
+/*! Hash function for the mmap table. */
+void hash_free_mmap_entry(struct hash_elem *e, void *aux UNUSED) {
+    struct mmap_table_entry *mmap_entry =
+        hash_entry(e, struct mmap_table_entry, elem);
+    free(mmap_entry);
 }
 
 /* Helper functions */

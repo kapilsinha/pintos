@@ -222,6 +222,8 @@ void process_exit(void) {
                 the thread is exiting anyway. */
             pagedir_clear_page(pd, entry->page_addr);
         }
+        hash_destroy(&cur->supp_page_table, &hash_free_supp_entry);
+
         /* Correct ordering here is crucial.  We must set
          * cur->pagedir to NULL before switching page directories,
          * so that a timer interrupt can't switch back to the

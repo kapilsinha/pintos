@@ -68,9 +68,12 @@ struct mmap_table_entry {
 unsigned vaddr_hash (const struct hash_elem *v_, void *aux UNUSED);
 bool vaddr_less (const struct hash_elem *a_, const struct hash_elem *b_,
     void *aux UNUSED);
+void hash_free_supp_entry(struct hash_elem *e, void *aux UNUSED);
+
 unsigned mmap_hash (const struct hash_elem *v_, void *aux UNUSED);
 bool mmap_less (const struct hash_elem *a_, const struct hash_elem *b_,
     void *aux UNUSED);
+void hash_free_mmap_entry(struct hash_elem *e, void *aux UNUSED);
 
 /* Finds the supplemental page table entry for a user page */
 struct supp_page_table_entry *find_entry(void *upage, struct thread *t);

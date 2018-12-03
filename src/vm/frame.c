@@ -100,6 +100,7 @@ void *frame_get_page(void) {
 void frame_free_page(void *frame) {
     lock_acquire(&frame_table_lock);
     struct frame_table_entry *entry = get_frame_entry(frame);
+    pagedir_clear_page(entry->t->pagedir, entry->page);
     if (entry == NULL) PANIC("Could not find frame to free!");
     entry->in_use = 0;
 #ifndef NDEBUG

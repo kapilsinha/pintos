@@ -172,6 +172,7 @@ void exit_with_status(int status) {
             = hash_entry (hash_cur (&i), struct mmap_table_entry, elem);
         sys_munmap(entry->mapping, NULL);
     }
+    hash_destroy(&thread_current()->mmap_file_table, &hash_free_mmap_entry);
 
     sema_up(&c->signal);
  }
@@ -414,7 +415,7 @@ void sys_close(int fd, struct intr_frame *f UNUSED) {
  *  Maps the file open at fd into the process' virtual address space.
  *  Note: the file is mapped in consecutive virtual pages
  */
-mapid_t sys_mmap(int fd, void *addr, struct intr_frame *f) {
+mapid_t sys_mmap(int fd, void *addr, struct intr_frame *f UNUSED) {
     struct thread *t = thread_current();
     /* Stdin and stdout are not mappable */
     if (fd == 0 || fd == 1) { 
@@ -533,11 +534,16 @@ void sys_munmap(mapid_t mapping, struct intr_frame *f UNUSED) {
 
     /* Delete the entries in both mmap and supplemental page tables */
     hash_delete(&t->mmap_file_table, &mmap_entry->elem);
+    
+    /* Remove the elements in the supplemental page table corresponding
+     * to the virtual addresses that the mmap file had occupied */
     upage = addr;
-    struct supp_page_table_entry *entry;
     while (upage < addr + file_size) {
-        entry = find_entry(upage, t);
-        hash_delete(&t->supp_page_table, &entry->elem);
+        void *frame = pagedir_get_page(t->pagedir, upage);
+        if (frame) {
+            frame_free_page(frame);
+        }
+        hash_delete(&t->supp_page_table, &find_entry(upage, t)->elem);
         upage += PGSIZE;
     }
 }
