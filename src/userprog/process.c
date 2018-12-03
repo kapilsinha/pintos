@@ -517,7 +517,9 @@ static bool load_segment(struct file *file, off_t ofs, uint8_t *upage,
 
         struct file *new_file = file_reopen(file);
         file_seek(new_file, ofs);
-        supp_add_exec_entry(new_file, page_read_bytes, page_zero_bytes, writable, upage);
+        /* Add an entry to supplemental page table to lazily load later. */
+        supp_add_exec_entry(new_file, page_read_bytes, page_zero_bytes,
+            writable, upage);
         ofs += page_read_bytes;
 
         /* Advance. */
@@ -542,10 +544,8 @@ static bool setup_stack(const char *filename, void **esp) {
      * (it is always allocated immediately) */
     kpage = frame_get_page();
     if (kpage != NULL) {
-        // Update the struct
-        struct frame_table_entry *entry = get_frame_entry(kpage);
-        entry->page = upage;
-        entry->t = thread_current();
+        /* Update the struct */
+        update_frame_struct(get_frame_entry(kpage), upage, thread_current());
         success = install_page(upage, kpage, true);
         if (success) {
             /* Calculate the total size/length of the arguments */

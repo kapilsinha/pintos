@@ -41,6 +41,15 @@ struct frame_table_entry *get_frame_entry(void *frame) {
 }
 
 /*!
+ * Used to update the struct in the frame table after frame_get_page is called.
+ */
+void update_frame_struct(struct frame_table_entry *entry, uint8_t *upage,
+    struct thread *t) {
+    entry->page = upage;
+    entry->t = t;
+}
+
+/*!
  *  Clears the access bits in the virtual page corresponding to each frame
  *  in the frame table
  */

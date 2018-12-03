@@ -16,6 +16,8 @@ struct frame_table_entry {
 struct frame_table_entry *frame_table;
 
 struct frame_table_entry *get_frame_entry(void *frame);
+void update_frame_struct(struct frame_table_entry *entry, uint8_t *upage,
+    struct thread *t);
 void frame_clear_access_bits(void);
 
 void frame_table_init(size_t user_pages);

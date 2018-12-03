@@ -30,6 +30,7 @@ bool vaddr_less (const struct hash_elem *a_, const struct hash_elem *b_,
     return a->page_addr < b->page_addr;
 }
 
+/*! Used to free supplemental page table on process exit. */
 void hash_free_supp_entry(struct hash_elem *e, void *aux UNUSED) {
     struct supp_page_table_entry *sup_entry =
         hash_entry(e, struct supp_page_table_entry, elem);
@@ -70,16 +71,6 @@ struct supp_page_table_entry *find_entry(void *upage, struct thread *t) {
     to_find.page_addr = upage;
     struct hash_elem *e = hash_find(&t->supp_page_table, &to_find.elem);
     return e != NULL ? hash_entry(e, struct supp_page_table_entry, elem) : NULL;
-}
-
-/* Prints out everything in the hash table. */
-void print_hash_table(struct hash *h, int bucket_idx) {
-    struct list *bucket = &h->buckets[bucket_idx];
-    for (struct list_elem *i = list_begin(bucket); i != list_end(bucket); i = list_next(i)) {
-        struct hash_elem *hi = list_elem_to_hash_elem(i);
-        struct supp_page_table_entry *e = hash_entry (hi, struct supp_page_table_entry, elem);
-        printf("%p\n", e->page_addr);
-    }
 }
 
 /*! Adds a mapping from user virtual address UPAGE to kernel
@@ -217,34 +208,33 @@ bool handle_page_fault(void *page_addr, struct intr_frame *f) {
     struct thread *t = thread_current();
     uint8_t *upage = pg_round_down(page_addr);
     struct supp_page_table_entry *entry = find_entry(upage, t);
-    /*
-    printf("Hash table size: %d\n", hash_size(&t->supp_page_table));
-    printf("Looking for address : %p\n", page_addr);
-    for (int i = 0; i < t->supp_page_table.bucket_cnt; i++) {
-        print_hash_table(&t->supp_page_table, i);
-    }
-    */
 
+    /* Check if we need to grow the stack. */
     if (! entry && valid_stack_growth(page_addr, f)) {
          supp_add_stack_entry(upage);
          return load_stack(find_entry(upage, t));
     }
+    /* If there is no entry in the supplemental page table, return. */
     if (entry == NULL) {
         return false;
     }
+    /* Check if we need to load the executable. */
     if (entry->type == PAGE_SOURCE_EXECUTABLE && entry->load_loc == 0) {
         return load_exec(entry);
     }
+    /* Check if we need to load the stack page. */
     if (entry->type == PAGE_SOURCE_STACK && entry->load_loc == 0) {
         return load_stack(entry);
     }
+    /* Check if we need to load the mmap page. */
     if (entry->type == PAGE_SOURCE_MMAP) {
         return load_mmap(entry);
     }
+    /* Check if we need to load the page back from swap. */
     if (entry->load_loc == 1) {
         return load_swap(entry);
     }
-    PANIC("Haven't handled this kind of page fault yet");
+    return false;
 }
 
 /*!
@@ -259,31 +249,22 @@ bool load_exec(struct supp_page_table_entry *exec_entry) {
     size_t page_zero_bytes = exec_entry->bf.page_zero_bytes;
     bool writable = exec_entry->bf.writable;
     uint8_t *upage = exec_entry->page_addr;
-    /*
-    printf("Page address: %p\n", upage);
-    printf("Page read bytes: %d\n", page_read_bytes);
-    printf("Page zero bytes: %d\n", page_zero_bytes);
-    printf("Writable: %d\n", writable);
-    printf("File length: %d\n", file_length(file));
-    */
 
-    // Get a page of memory.
+    /* Get a page of memory. */
     uint8_t *kpage = frame_get_page();
     if (kpage == NULL)
         return false;
 
-    // Update the struct
-    struct frame_table_entry *entry = get_frame_entry(kpage);
-    entry->page = upage;
-    entry->t = thread_current();
+    /* Update the struct. */
+    update_frame_struct(get_frame_entry(kpage), upage, thread_current());
 
-    // Load this page.
+    /* Load this page. */
     if (file_read(file, kpage, page_read_bytes) != (int) page_read_bytes) {
         frame_free_page(kpage);
         return false;
     }
 
-    // Add the page to the process's address space.
+    /* Add the page to the process's address space. */
     if (!install_page(upage, kpage, writable)) {
         frame_free_page(kpage);
         return false;
@@ -303,19 +284,17 @@ bool load_stack(struct supp_page_table_entry *stack_entry) {
     uint8_t *upage = stack_entry->page_addr;
     bool writable = stack_entry->bf.writable;
 
-    // Get a page of memory.
+    /* Get a page of memory. */
     uint8_t *kpage = frame_get_page();
     if (kpage == NULL)
         return false;
 
-    // Update the struct
-    struct frame_table_entry *entry = get_frame_entry(kpage);
-    entry->page = upage;
-    entry->t = thread_current();
+    /* Update the struct. */
+    update_frame_struct(get_frame_entry(kpage), upage, thread_current());
 
     memset(kpage, 0, PGSIZE);
 
-    // Add the page to the process's address space.
+    /* Add the page to the process's address space. */
     if (!install_page(upage, kpage, writable)) {
         frame_free_page(kpage);
         return false;
@@ -337,41 +316,36 @@ bool load_mmap(struct supp_page_table_entry *mmap_entry) {
 
 /*! Loads a file from swap back into memory. */
 bool load_swap(struct supp_page_table_entry *swap_entry) {
-    // if (swap_entry->eviction_status == 2) { // This page is getting evicted
-    //     lock_acquire(&swap_entry->evict_lock);
-    // }
+    /* If the page is getting evicted, wait. */
     lock_acquire(&swap_entry->evict_lock);
     ASSERT(swap_entry->eviction_status == 1);
     uint8_t *upage = swap_entry->page_addr;
     bool writable = swap_entry->bf.writable;
     size_t swap_slot = swap_entry->swap_slot;
 
-    // Get a page of memory.
+    /* Get a page of memory. */
     uint8_t *kpage = frame_get_page();
     if (kpage == NULL) {
         lock_release(&swap_entry->evict_lock);
         return false;
     }
 
-    // Update the struct
-    struct frame_table_entry *entry = get_frame_entry(kpage);
-    entry->page = upage;
-    entry->t = thread_current();
+    /* Update the struct. */
+    update_frame_struct(get_frame_entry(kpage), upage, thread_current());
 
-    // Clear page
+    /* Clear page. */
     memset(kpage, 0, PGSIZE);
 
-    // Read from swap
+    /* Read from swap. */
     swap_read(kpage, swap_slot);
 
-    // Add the page to the process's address space.
+    /* Add the page to the process's address space. */
     if (!install_page(upage, kpage, writable)) {
-        printf("Couldn't install\n");
         frame_free_page(kpage);
         lock_release(&swap_entry->evict_lock);
         return false;
     }
-
+    /* Done loading. */
     lock_release(&swap_entry->evict_lock);
     return true;
 }

@@ -286,6 +286,7 @@ struct backing_file {
 >> the file system or swap.  How do you ensure that a second process Q
 >> cannot interfere by e.g. attempting to evict the frame while it is
 >> still being read in?
+
     The evicting process and loading a file share a lock, so when
     process P begins to read in a file, it acquires a lock on this frame.
     Process Q cannot evict this frame until the evicting process has finished

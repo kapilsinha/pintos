@@ -40,7 +40,8 @@ static void init_pool(struct pool *, void *base, size_t page_cnt,
 static bool page_from_pool(const struct pool *, void *page);
 
 /*! Initializes the page allocator.  At most USER_PAGE_LIMIT
-    pages are put into the user pool. */
+    pages are put into the user pool. Returns the number of pages put into the
+    user pool. */
 size_t palloc_init(size_t user_page_limit) {
     /* Free memory starts at 1 MB and runs to the end of RAM. */
     uint8_t *free_start = ptov(1024 * 1024);
