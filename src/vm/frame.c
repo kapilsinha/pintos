@@ -31,7 +31,6 @@ struct frame_table_entry *nru_eviction(void);
  * Returns a pointer to the frame table entry struct for this frame. If not
  * found, returns NULL. */
 struct frame_table_entry *get_frame_entry(void *frame) {
-    // TODO: Maybe find more efficient way of doing this?
     for (unsigned int i = 0; i < num_user_pages; i++) {
         if (frame_table[i].frame == frame) {
             return &frame_table[i];
@@ -63,26 +62,26 @@ void frame_clear_access_bits(void) {
 /* Initializes the frame table. */
 void frame_table_init(size_t user_pages) {
     num_user_pages = user_pages - 1;
-    // init_ram_pages is defined in start.S and loader.h
+    /* init_ram_pages is defined in start.S and loader.h */
     frame_table = malloc(sizeof(struct frame_table_entry) * num_user_pages);
     if (!frame_table) {
         PANIC("Failed to allocate frame table!\n");
     }
-    // Populate the frame table with physical pages
+    /* Populate the frame table with physical pages. */
     for (unsigned int i = 0; i < num_user_pages; i++) {
         frame_table[i].in_use = 0;
         frame_table[i].page = NULL;
         frame_table[i].t = NULL;
         lock_init(&frame_table[i].pin);
-        // Get page from user pool to keep kernel from running out of memory
+        /* Get page from user pool to keep kernel from running out of memory. */
         frame_table[i].frame = palloc_get_page(PAL_USER | PAL_ASSERT | PAL_ZERO);
         if (frame_table[i].frame == NULL) {
             PANIC("Failed to allocate frame!");
         }
     }
-    // Initialize the clock hand to point to the first page
+    /* Initialize the clock hand to point to the first page. */
     clock_hand = 0;
-    // Initialize the lock
+    /* Initialize the lock. */
     lock_init(&frame_table_lock);
     lock_init(&evict_lock);
 }
@@ -92,7 +91,7 @@ void frame_table_init(size_t user_pages) {
  */
 struct frame_table_entry *clock_eviction(void) {
     struct frame_table_entry *frame = &frame_table[clock_hand];
-    // Check the page currently under the clock hand
+    /* Check the page currently under the clock hand. */
     while (pagedir_is_accessed(frame->t->pagedir, frame->page)) {
         pagedir_set_accessed(frame->t->pagedir, frame->page, false);
         clock_hand = (clock_hand + 1) % (num_user_pages);
@@ -153,7 +152,7 @@ struct frame_table_entry *nru_eviction(void) {
 /* Returns a pointer to a physical frame from the frame table. */
 void *frame_get_page(void) {
     lock_acquire(&frame_table_lock);
-    // Loop over frame table to find unused frame
+    /* Loop over frame table to find unused frame. */
     for (unsigned int i = 0; i < num_user_pages; i++) {
         if (frame_table[i].in_use == 0) {
             frame_table[i].in_use = 1;
@@ -162,7 +161,7 @@ void *frame_get_page(void) {
         }
     }
     lock_release(&frame_table_lock);
-    // If no empty frames are found, evict a page
+    /* If no empty frames are found, evict a page. */
     lock_acquire(&evict_lock);
     struct frame_table_entry *evicted = evict_page();
     lock_release(&evict_lock);
@@ -194,32 +193,33 @@ struct frame_table_entry *evict_page(void) {
     evict_frame = clock_eviction();
     //evict_frame = nru_eviction();
     struct thread *t = evict_frame->t;
-    // Acquire lock before evicting
+    /* Acquire lock before evicting. */
     lock_acquire(&evict_frame->pin);
-    // Get supplemental page table entry
+    /* Get supplemental page table entry. */
     ASSERT(evict_frame->page != NULL);
     struct supp_page_table_entry *sup_entry = find_entry(evict_frame->page, t);
     if (!sup_entry) PANIC("Didn't find entry in evict_page");
     sup_entry->eviction_status = 2;
     lock_acquire(&sup_entry->evict_lock);
-    // Determine where to write i.e. swap or disk
+    /* Determine where to write i.e. swap or disk. */
     if (sup_entry->save_loc == 1) {// Save to swap
         size_t slot = swap_write(evict_frame->page);
         sup_entry->swap_slot = slot;
         sup_entry->load_loc = 1;
     }
     else {// Save to backing file
-        ASSERT(file_write(sup_entry->bf.file, evict_frame->page, PGSIZE) == PGSIZE);
+        off_t wrote = file_write(sup_entry->bf.file, evict_frame->page, PGSIZE);
+        ASSERT(wrote == PGSIZE);
         sup_entry->load_loc = 0;
     }
-    // Evict the page and update the frame table entry
+    /* Evict the page and update the frame table entry. */
     pagedir_clear_page(t->pagedir, evict_frame->page);
     evict_frame->in_use = 0;
-    // Mark as evicted
+    /* Mark as evicted. */
     lock_release(&sup_entry->evict_lock);
     sup_entry->eviction_status = 1;
     lock_release(&evict_frame->pin);
-    // Return the frame address after clearing the frame
+    /* Return the frame address after clearing the frame. */
     memset(evict_frame->frame, 0, PGSIZE);
     return evict_frame;
 }
