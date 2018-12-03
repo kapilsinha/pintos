@@ -21,6 +21,9 @@
 
 static size_t num_user_pages;
 static struct lock frame_table_lock;
+static int clock_hand;
+
+struct frame_table_entry *clock_eviction(void);
 
 /*!
  * Returns a pointer to the frame table entry struct for this frame. If not
@@ -55,8 +58,24 @@ void frame_table_init(size_t user_pages) {
             PANIC("Failed to allocate frame!");
         }
     }
+    // Initialize the clock hand to point to the first page
+    clock_hand = 0;
     // Initialize the lock
     lock_init(&frame_table_lock);
+}
+
+/*!
+ * Uses the clock eviction policy to evict a page.
+ */
+struct frame_table_entry *clock_eviction(void) {
+    struct frame_table_entry *frame = &frame_table[clock_hand];
+    // Check the page currently under the clock hand
+    while (pagedir_is_accessed(frame->t->pagedir, frame->page)) {
+        pagedir_set_accessed(frame->t->pagedir, frame->page, false);
+        clock_hand = (clock_hand + 1) % (num_user_pages);
+        frame = &frame_table[clock_hand];
+    }
+    return frame;
 }
 
 /* Returns a pointer to a physical frame from the frame table. */
@@ -96,7 +115,7 @@ void frame_free_page(void *frame) {
  */
 struct frame_table_entry *evict_page(void) {
     // TODO: Implement clock eviction policy
-    struct frame_table_entry *rand_frame = &frame_table[random_ulong() % num_user_pages];
+    struct frame_table_entry *rand_frame = clock_eviction();
     struct thread *t = rand_frame->t;
     // Acquire lock before evicting
     lock_acquire(&rand_frame->pin);
