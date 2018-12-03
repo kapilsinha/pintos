@@ -56,6 +56,7 @@ size_t swap_write(void *upage) {
     bitmap_mark(swap_table, slot / 8);
     // Buffer for one block
     void *buffer = malloc(BLOCK_SECTOR_SIZE);
+    if (!buffer) PANIC("Could not allocate buffer for swap_write!");
     // Write to the swap block, beginning at sector "slot"
     for (int i = 0; i < 8; i++) {
         // Copy over file contents to the buffer
@@ -64,6 +65,7 @@ size_t swap_write(void *upage) {
         block_write(swap, slot + i, buffer);
         upage += BLOCK_SECTOR_SIZE;
     }
+    free(buffer);
     lock_release(&swap_lock);
     return slot;
 }
@@ -73,12 +75,12 @@ size_t swap_write(void *upage) {
  * multiple of 8 and that upage points to a user page.
  */
 void swap_read(void *upage, size_t slot) {
-    // printf("Reading slot %d\n", slot);
     lock_acquire(&swap_lock);
     ASSERT(slot % 8 == 0);
     ASSERT(bitmap_test(swap_table, slot / 8));
     // Buffer for one block
     void *buffer = malloc(BLOCK_SECTOR_SIZE);
+    if (!buffer) PANIC("Could not allocate buffer for swap_read!");
     // Write to the swap block, beginning at sector "slot"
     for (int i = 0; i < 8; i++) {
         block_read(swap, slot + i, buffer);
@@ -87,6 +89,7 @@ void swap_read(void *upage, size_t slot) {
         // Write the buffer to swap
         upage += BLOCK_SECTOR_SIZE;
     }
+    free(buffer);
     bitmap_reset(swap_table, slot / 8);
     lock_release(&swap_lock);
     return;
