@@ -9,10 +9,6 @@
  * processor's page table format.
  */
 
-#define list_elem_to_hash_elem(LIST_ELEM)                       \
-        list_entry(LIST_ELEM, struct hash_elem, list_elem)
-
-
 /*! Hash function for the supplemental page table. */
 unsigned vaddr_hash (const struct hash_elem *v_, void *aux UNUSED) {
     const struct supp_page_table_entry *v
@@ -228,7 +224,10 @@ bool handle_page_fault(void *page_addr, struct intr_frame *f) {
     }
     /* Check if we need to load the mmap page. */
     if (entry->type == PAGE_SOURCE_MMAP) {
-        return load_mmap(entry);
+        lock_acquire(&entry->evict_lock);
+        bool loaded = load_mmap(entry);
+        lock_release(&entry->evict_lock);
+        return loaded;
     }
     /* Check if we need to load the page back from swap. */
     if (entry->load_loc == 1) {
