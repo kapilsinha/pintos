@@ -124,6 +124,9 @@ struct frame_table_entry *evict_page(void) {
     struct thread *t = rand_frame->t;
     // Acquire lock before evicting
     lock_acquire(&rand_frame->pin);
+    // Evict the page and update the frame table entry
+    pagedir_clear_page(t->pagedir, rand_frame->page);
+    rand_frame->in_use = 0;
     // Get supplemental page table entry
     ASSERT(rand_frame->page != NULL);
     struct supp_page_table_entry *sup_entry = find_entry(rand_frame->page, t);
@@ -139,9 +142,6 @@ struct frame_table_entry *evict_page(void) {
         ASSERT(file_write(sup_entry->bf.file, rand_frame->page, PGSIZE) == PGSIZE);
         sup_entry->load_loc = 0;
     }
-    // Evict the page and update the frame table entry
-    pagedir_clear_page(t->pagedir, rand_frame->page);
-    rand_frame->in_use = 0;
     // Mark as evicted
     sup_entry->eviction_status = 1;
     lock_release(&rand_frame->pin);
