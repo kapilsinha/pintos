@@ -147,8 +147,16 @@ static void page_fault(struct intr_frame *f) {
     write = (f->error_code & PF_W) != 0;
     user = (f->error_code & PF_U) != 0;
 
+    /* If the page is not in physical memory, handle the page fault
+     * appropriately depending on the type of fault source page (exec,
+     * stack, or mmap)
+     */
     if (not_present && handle_page_fault(fault_addr, f)) {
         return;
+    }
+    /* On an attempt to write to a read-only file, call exit(-1) */
+    if (! not_present) {
+        sys_exit(-1, f);
     }
     printf("Page fault at %p: %s error %s page in %s context.\n",
            fault_addr,

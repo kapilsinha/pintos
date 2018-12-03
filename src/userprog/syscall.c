@@ -333,9 +333,11 @@ int sys_read(int fd, const void *buffer, unsigned size, struct intr_frame *f) {
         return -1;
     }
     int32_t bytes_read = file_read(file, (void *) buffer, size);
+    /*
     if ((unsigned) bytes_read < size) {
         return 0;
     }
+    */
     return bytes_read;
 }
 
