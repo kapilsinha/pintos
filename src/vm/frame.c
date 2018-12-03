@@ -21,6 +21,7 @@
 
 static size_t num_user_pages;
 static struct lock frame_table_lock;
+static struct lock evict_lock;
 static int clock_hand;
 
 struct frame_table_entry *clock_eviction(void);
@@ -62,6 +63,7 @@ void frame_table_init(size_t user_pages) {
     clock_hand = 0;
     // Initialize the lock
     lock_init(&frame_table_lock);
+    lock_init(&evict_lock);
 }
 
 /*!
@@ -89,10 +91,12 @@ void *frame_get_page(void) {
             return frame_table[i].frame;
         }
     }
-    // If no empty frames are found, evict a page
-    struct frame_table_entry *evicted = evict_page();
-    evicted->in_use = 1;
     lock_release(&frame_table_lock);
+    // If no empty frames are found, evict a page
+    lock_acquire(&evict_lock);
+    struct frame_table_entry *evicted = evict_page();
+    lock_release(&evict_lock);
+    evicted->in_use = 1;
     return evicted->frame;
 }
 
