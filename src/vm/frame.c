@@ -152,12 +152,12 @@ void *frame_get_page(void) {
             return frame_table[i].frame;
         }
     }
-    lock_release(&frame_table_lock);
     // If no empty frames are found, evict a page
     lock_acquire(&evict_lock);
     struct frame_table_entry *evicted = evict_page();
     lock_release(&evict_lock);
     evicted->in_use = 1;
+    lock_release(&frame_table_lock);
     return evicted->frame;
 }
 
@@ -192,6 +192,7 @@ struct frame_table_entry *evict_page(void) {
     struct supp_page_table_entry *sup_entry = find_entry(evict_frame->page, t);
     if (!sup_entry) PANIC("Didn't find entry in evict_page");
     sup_entry->eviction_status = 2;
+    lock_acquire(&sup_entry->evict_lock);
     // Determine where to write i.e. swap or disk
     if (sup_entry->save_loc == 1) {// Save to swap
         size_t slot = swap_write(evict_frame->page);
@@ -206,6 +207,7 @@ struct frame_table_entry *evict_page(void) {
     pagedir_clear_page(t->pagedir, evict_frame->page);
     evict_frame->in_use = 0;
     // Mark as evicted
+    lock_release(&sup_entry->evict_lock);
     sup_entry->eviction_status = 1;
     lock_release(&evict_frame->pin);
     // Return the frame address after clearing the frame

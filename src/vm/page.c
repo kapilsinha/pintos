@@ -131,6 +131,7 @@ void supp_add_exec_entry(struct file *f, uint32_t page_data_bytes,
     exec_entry->save_loc = 1;
     exec_entry->load_loc = 0;
     exec_entry->eviction_status = 1;
+    lock_init(&exec_entry->evict_lock);
     exec_entry->bf.file = f;
     exec_entry->bf.page_data_bytes = page_data_bytes;
     exec_entry->bf.page_zero_bytes = page_zero_bytes;
@@ -162,6 +163,7 @@ void supp_add_stack_entry(void *page_addr) {
     stack_entry->save_loc = 1;
     stack_entry->load_loc = 0;
     stack_entry->eviction_status = 1;
+    lock_init(&stack_entry->evict_lock);
     stack_entry->bf.writable = true;
     struct hash_elem * elem
         = hash_insert(&t->supp_page_table, &stack_entry->elem);
@@ -193,6 +195,7 @@ void supp_add_mmap_entry(struct file *f, uint32_t page_data_bytes,
     mmap_entry->save_loc = 0;
     mmap_entry->load_loc = 0;
     mmap_entry->eviction_status = 1;
+    lock_init(&mmap_entry->evict_lock);
     mmap_entry->bf.file = f;
     mmap_entry->bf.page_data_bytes = page_data_bytes;
     mmap_entry->bf.page_zero_bytes = page_zero_bytes;
@@ -334,6 +337,11 @@ bool load_mmap(struct supp_page_table_entry *mmap_entry) {
 
 /*! Loads a file from swap back into memory. */
 bool load_swap(struct supp_page_table_entry *swap_entry) {
+    // if (swap_entry->eviction_status == 2) { // This page is getting evicted
+    //     lock_acquire(&swap_entry->evict_lock);
+    // }
+    lock_acquire(&swap_entry->evict_lock);
+    ASSERT(swap_entry->eviction_status == 1);
     uint8_t *upage = swap_entry->page_addr;
     bool writable = swap_entry->bf.writable;
     size_t swap_slot = swap_entry->swap_slot;
@@ -341,6 +349,7 @@ bool load_swap(struct supp_page_table_entry *swap_entry) {
     // Get a page of memory.
     uint8_t *kpage = frame_get_page();
     if (kpage == NULL) {
+        lock_release(&swap_entry->evict_lock);
         return false;
     }
 
@@ -359,8 +368,10 @@ bool load_swap(struct supp_page_table_entry *swap_entry) {
     if (!install_page(upage, kpage, writable)) {
         printf("Couldn't install\n");
         frame_free_page(kpage);
+        lock_release(&swap_entry->evict_lock);
         return false;
     }
 
+    lock_release(&swap_entry->evict_lock);
     return true;
 }

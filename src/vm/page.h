@@ -44,7 +44,8 @@ struct supp_page_table_entry {
     bool save_loc;           // 1 to save to swap, 0 to save to backing file
     bool load_loc;           // 1 to load from swap, 0 to load from backing file
     int eviction_status;     // 1 if page is evicted, 0 if it is in memory,
-                             // 2 if in the process of evicting
+                             // 2 if in the process of 
+    struct lock evict_lock;  // If in process of evicting, acquire this lock
     size_t swap_slot;        // Swap slot that contains this page if load_loc=1
     struct backing_file bf;  // Data to read/write to backing file
     struct hash_elem elem;   // Element for hash table
