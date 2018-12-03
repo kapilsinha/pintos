@@ -216,7 +216,7 @@ bool handle_page_fault(void *page_addr, struct intr_frame *f) {
     }
     /* Check if we need to load the executable. */
     if (entry->type == PAGE_SOURCE_EXECUTABLE && entry->load_loc == 0) {
-        return load_exec(entry);
+        return load_from_file(entry);
     }
     /* Check if we need to load the stack page. */
     if (entry->type == PAGE_SOURCE_STACK && entry->load_loc == 0) {
@@ -224,10 +224,7 @@ bool handle_page_fault(void *page_addr, struct intr_frame *f) {
     }
     /* Check if we need to load the mmap page. */
     if (entry->type == PAGE_SOURCE_MMAP) {
-        lock_acquire(&entry->evict_lock);
-        bool loaded = load_mmap(entry);
-        lock_release(&entry->evict_lock);
-        return loaded;
+        return load_from_file(entry);
     }
     /* Check if we need to load the page back from swap. */
     if (entry->load_loc == 1) {
@@ -237,12 +234,13 @@ bool handle_page_fault(void *page_addr, struct intr_frame *f) {
 }
 
 /*!
- *  Load an executable source page to physical memory
+ *  Load an executable source page or mmap file to physical memory.
  *  This function should be called upon a page fault to bring
  *  into memory a certain page.
- *  Returns true if executable loads properly, else false
+ *  Returns true if the data from the file loads properly, else false.
  */
-bool load_exec(struct supp_page_table_entry *exec_entry) {
+bool load_from_file(struct supp_page_table_entry *exec_entry) {
+    lock_acquire(&exec_entry->evict_lock);
     struct file * file = exec_entry->bf.file;
     size_t page_read_bytes = exec_entry->bf.page_data_bytes;
     size_t page_zero_bytes = exec_entry->bf.page_zero_bytes;
@@ -270,6 +268,7 @@ bool load_exec(struct supp_page_table_entry *exec_entry) {
     }
 
     memset(kpage + page_read_bytes, 0, page_zero_bytes);
+    lock_release(&exec_entry->evict_lock);
     return true;
 }
 
@@ -280,6 +279,7 @@ bool load_exec(struct supp_page_table_entry *exec_entry) {
  *  Returns true if stack page load properly, else false
  */
 bool load_stack(struct supp_page_table_entry *stack_entry) {
+    lock_acquire(&stack_entry->evict_lock);
     uint8_t *upage = stack_entry->page_addr;
     bool writable = stack_entry->bf.writable;
 
@@ -300,17 +300,8 @@ bool load_stack(struct supp_page_table_entry *stack_entry) {
     }
 
     memset(kpage, 0, PGSIZE);
+    lock_release(&stack_entry->evict_lock);
     return true;
-}
-
-/*!
- *  Load an mmap page to physical memory
- *  This function should be called upon a page fault to bring
- *  in a certain mmap page into memory.
- *  Returns true if mmap page loads properly, else false
- */
-bool load_mmap(struct supp_page_table_entry *mmap_entry) {
-    return load_exec(mmap_entry);
 }
 
 /*! Loads a file from swap back into memory. */

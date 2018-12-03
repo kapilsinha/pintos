@@ -44,7 +44,7 @@ struct supp_page_table_entry {
     bool save_loc;           // 1 to save to swap, 0 to save to backing file
     bool load_loc;           // 1 to load from swap, 0 to load from backing file
     int eviction_status;     // 1 if page is evicted, 0 if it is in memory,
-                             // 2 if in the process of 
+                             // 2 if in the process of
     struct lock evict_lock;  // If in process of evicting, acquire this lock
     size_t swap_slot;        // Swap slot that contains this page if load_loc=1
     struct backing_file bf;  // Data to read/write to backing file
@@ -98,11 +98,9 @@ void supp_add_mmap_entry(struct file *f, uint32_t page_data_bytes,
 /* Handles a generic page fault */
 bool handle_page_fault(void *page_addr, struct intr_frame *f);
 /* Load an executable source page to physical memory */
-bool load_exec(struct supp_page_table_entry * exec_entry);
+bool load_from_file(struct supp_page_table_entry * exec_entry);
 /* Load a stack source page to physical memory */
 bool load_stack(struct supp_page_table_entry * stack_entry);
-/* Load a mmap source page to physical memory */
-bool load_mmap(struct supp_page_table_entry * mmap_entry);
 /* Loads a file from swap back into memory */
 bool load_swap(struct supp_page_table_entry *swap_entry);
 
