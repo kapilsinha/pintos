@@ -145,9 +145,12 @@ void timer_print_stats(void) {
 static void timer_interrupt(struct intr_frame *args UNUSED) {
     ticks++;
     thread_tick();
+    /*
+    // Update access bits for NRU eviction policy
     if (ticks % CLEAR_ACCESS_BITS_TICKS == 0) {
         frame_clear_access_bits();
     }
+    */
 }
 
 /*! Returns true if LOOPS iterations waits for more than one timer tick,
