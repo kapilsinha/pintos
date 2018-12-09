@@ -310,3 +310,71 @@ void cond_broadcast(struct condition *cond, struct lock *lock) {
         cond_signal(cond, lock);
 }
 
+/*! Initializes read-write lock RW_LOCK. A read-write lock can be
+    "held" by several readers simulatenously but is exclusive for
+    writers. Also it is is fair - if readers possess it currently
+    and writers are waiting, the writers will get access next. If
+    a writer holds it currently and there are readers waiting, the
+    writer allows all the currently waiting readers to hold it next */
+void rw_lock_init(struct rw_lock *rw_lock) {
+    lock_init(&rw_lock->lock);
+    rw_lock->num_readers = 0;
+    rw_lock->num_readers_waiting = 0;
+    rw_lock->num_writers_waiting = 0;
+    rw_lock->num_readers_permitted = 0;
+    cond_init(&rw_lock->readers);
+    cond_init(&rw_lock->writers);
+}
+
+/*! Allows a reader to acquire the lock, so other readers may acquire
+    the lock as long as no writers are waiting (due to fairness), but
+    writers may not acquire the lock */
+void rw_read_acquire(struct rw_lock *rw_lock) {
+    rw_lock->num_readers_waiting++;
+    lock_acquire(&rw_lock->lock);
+    while (rw_lock->num_writers_waiting > 0
+           && rw_lock->num_readers_permitted == 0) {
+        cond_wait(&rw_lock->readers, &rw_lock->lock);
+    }
+    rw_lock->num_readers_waiting--;
+    rw_lock->num_readers_permitted = rw_lock->num_readers_permitted != 0
+        ? rw_lock->num_readers_permitted - 1 : 0;
+    rw_lock->num_readers++;
+    lock_release(&rw_lock->lock);
+}
+
+/*! Allows a reader to release the lock, so the number of readers holding
+    the lock decreases by one. If this was the last reader holding the
+    lock, and there are writers waiting for it, this allows a single 
+    writer to acquire the lock */
+void rw_read_release(struct rw_lock *rw_lock) {
+    lock_acquire(&rw_lock->lock);
+    rw_lock->num_readers--;
+    if (rw_lock->num_readers == 0) {
+        ASSERT(rw_lock->num_readers_permitted == 0);
+        cond_signal(&rw_lock->writers, &rw_lock->lock);
+    }
+    lock_release(&rw_lock->lock);
+}
+
+/*! Allows a writer to acquire the lock, so no other thread may hold
+    this lock concurrently. */
+void rw_write_acquire(struct rw_lock *rw_lock) {
+    rw_lock->num_writers_waiting++;
+    lock_acquire(&rw_lock->lock);
+    while (rw_lock->num_readers > 0
+           || rw_lock->num_readers_permitted > 0) {
+        cond_wait(&rw_lock->writers, &rw_lock->lock);
+    }
+    rw_lock->num_writers_waiting--;
+}
+
+/*! Allows a writer to release its exclusive lock, and if there are
+    x readers waiting for the lock, it gives all x of them permission
+    to acquire the lock next, before any writer can acquire the lock
+    again (due to fairness) */
+void rw_write_release(struct rw_lock *rw_lock) {
+    cond_broadcast(&rw_lock->readers, &rw_lock->lock);
+    rw_lock->num_readers_permitted = rw_lock->num_readers_waiting;
+    lock_release(&rw_lock->lock);
+}
