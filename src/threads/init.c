@@ -132,9 +132,11 @@ int main(void) {
     /* Initialize file system. */
     ide_init();
     locate_block_devices();
-    filesys_init(format_filesys);
     /* Initialize filesystem cache */
+    /* The file cache table must be initialized before the filesys
+     * or else there will be kernel panics etc */
     file_cache_table_init();
+    filesys_init(format_filesys);
 #endif
 
     /* Initialize virtual memory. */

@@ -6,6 +6,7 @@
 #include "filesys/free-map.h"
 #include "filesys/inode.h"
 #include "filesys/directory.h"
+//#include "filesys/cache.h"
 
 /*! Partition that contains the file system. */
 struct block *fs_device;
@@ -26,6 +27,7 @@ void filesys_init(bool format) {
         do_format();
 
     free_map_open();
+    //file_cache_table_init();
 }
 
 /*! Shuts down the file system module, writing any unwritten data to disk. */
