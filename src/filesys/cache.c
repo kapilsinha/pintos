@@ -82,7 +82,8 @@ struct file_cache_entry *find_file_cache_entry(block_sector_t sector,
 /*!
  *  Reads SIZE bytes from cached SECTOR (starting at OFFSET) into BUFFER
  */
-void file_cache_read(block_sector_t sector, void *buffer, off_t size, off_t offset) {
+void file_cache_read(block_sector_t sector, void *buffer,
+    off_t size, off_t offset) {
     struct file_cache_entry *cache_entry = find_file_cache_entry(sector, true);
     memcpy(buffer, cache_entry->data + offset, size);
     cache_entry->accessed = true;
@@ -92,7 +93,8 @@ void file_cache_read(block_sector_t sector, void *buffer, off_t size, off_t offs
 /*!
  *  Writes SIZE bytes from BUFFER into cached SECTOR (starting at OFFSET)
  */
-void file_cache_write(block_sector_t sector, void *buffer, off_t size, off_t offset) {
+void file_cache_write(block_sector_t sector, void *buffer,
+    off_t size, off_t offset) {
     struct file_cache_entry *cache_entry = find_file_cache_entry(sector, true);
     memcpy(cache_entry->data + offset, buffer, size);
     cache_entry->accessed = true;
@@ -100,7 +102,7 @@ void file_cache_write(block_sector_t sector, void *buffer, off_t size, off_t off
 }
 
 /*!
- *  Load a block from disk to the file buffer cache, where the
+ *  Loads a block from disk to the file buffer cache, where the
  *  element in the cache table we write to is cache_entry.
  *  Returns true if the data from the file loads properly, else false.
  */
