@@ -153,9 +153,9 @@ bool load_from_disk(struct file_cache_entry *cache_entry,
     block_sector_t sector) {
     ASSERT(cache_entry != NULL);
     lock_acquire(&cache_entry->evict_lock);
-    //rw_write_acquire(&cache_entry->rw_lock);
+    rw_write_acquire(&cache_entry->rw_lock);
     if (cache_entry->in_use) {
-        //rw_write_release(&cache_entry->rw_lock);
+        rw_write_release(&cache_entry->rw_lock);
         lock_release(&cache_entry->evict_lock);
         return false;
     }
@@ -166,7 +166,7 @@ bool load_from_disk(struct file_cache_entry *cache_entry,
     cache_entry->in_use = true;
     cache_entry->accessed = false;
     cache_entry->dirty = false;
-    //rw_write_release(&cache_entry->rw_lock);
+    rw_write_release(&cache_entry->rw_lock);
     lock_release(&cache_entry->evict_lock);
     return true;
 }
@@ -181,9 +181,13 @@ bool load_from_disk(struct file_cache_entry *cache_entry,
 struct file_cache_entry *evict_block(struct file_cache_entry *to_evict) {
     //printf("EVICTING SOMETHING\n");
     lock_acquire(&to_evict->evict_lock);
-    //rw_write_acquire(&to_evict->rw_lock);
+    rw_write_acquire(&to_evict->rw_lock);
     ASSERT(to_evict != NULL);
-    ASSERT(to_evict->in_use);
+    //ASSERT(to_evict->in_use);
+    if (! to_evict->in_use) {
+        rw_write_release(&to_evict->rw_lock);
+        return to_evict;
+    }
     /* Write the data from this entry back to disk if the block is dirty */
     if (to_evict->dirty) {
         block_write(fs_device, to_evict->sector, to_evict->data);
@@ -194,7 +198,7 @@ struct file_cache_entry *evict_block(struct file_cache_entry *to_evict) {
     to_evict->in_use = false;
     to_evict->accessed = false;
     to_evict->dirty = false;
-    //rw_write_release(&to_evict->rw_lock);
+    rw_write_release(&to_evict->rw_lock);
     lock_release(&to_evict->evict_lock);
     return to_evict;
 }
