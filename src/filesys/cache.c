@@ -183,11 +183,7 @@ struct file_cache_entry *evict_block(struct file_cache_entry *to_evict) {
     lock_acquire(&to_evict->evict_lock);
     rw_write_acquire(&to_evict->rw_lock);
     ASSERT(to_evict != NULL);
-    //ASSERT(to_evict->in_use);
-    if (! to_evict->in_use) {
-        rw_write_release(&to_evict->rw_lock);
-        return to_evict;
-    }
+    ASSERT(to_evict->in_use);
     /* Write the data from this entry back to disk if the block is dirty */
     if (to_evict->dirty) {
         block_write(fs_device, to_evict->sector, to_evict->data);
