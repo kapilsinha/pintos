@@ -46,11 +46,26 @@ struct inode {
  */
 static block_sector_t byte_to_sector(const struct inode *inode, off_t pos) {
     ASSERT(inode != NULL);
-    struct file_cache_entry *metadata
-        = find_file_cache_entry(inode->sector, true);
+    struct file_cache_entry *metadata;
+    bool success = false;
+    //printf("Stuck at byte_to_sector?\n");
+    while (! success) {
+        metadata = find_file_cache_entry(inode->sector, true);
+        rw_read_acquire(&metadata->rw_lock);
+        if (verify_cache_entry_sector(metadata, inode->sector)) {
+            success = true;
+        }
+        else {
+            rw_read_release(&metadata->rw_lock);
+        }
+    }
+    //printf("Not stuck at byte_to_sector\n");
     struct inode_disk data = *((struct inode_disk *) metadata->data);
-    if (pos < data.length)
-        return data.start + pos / BLOCK_SECTOR_SIZE;
+    int length = data.length;
+    int start = data.start;
+    rw_read_release(&metadata->rw_lock);
+    if (pos < length)
+        return start + pos / BLOCK_SECTOR_SIZE;
     else
         return -1;
 }
@@ -166,22 +181,32 @@ void inode_close(struct inode *inode) {
         /* Deallocate blocks if removed. */
         if (inode->removed) {
             free_map_release(inode->sector, 1);
-            struct file_cache_entry *metadata
-                = find_file_cache_entry(inode->sector, true);
-            struct inode_disk data = *((struct inode_disk *) metadata->data);
-            free_map_release(data.start, bytes_to_sectors(data.length));
-            /* Evict the cache entries for this inode */
-            for (int data_sector = data.start; (unsigned) data_sector
-                 < bytes_to_sectors(data.length); data_sector++) {
-                /* Evict the data sectors if they are already in cache */
-                struct file_cache_entry *cache_entry
-                    = find_file_cache_entry(data_sector, false);
-                if (cache_entry) {
-                    evict_block(cache_entry);
+            bool success = false;
+            struct file_cache_entry *metadata;
+            int start_sector;
+            int last_sector;
+            //printf("Stuck at inode_close?\n");
+            while (! success) {
+                metadata = find_file_cache_entry(inode->sector, true);
+                rw_read_acquire(&metadata->rw_lock);
+                if (verify_cache_entry_sector(metadata, inode->sector)) {
+                    success = true;
+                    struct inode_disk data = *((struct inode_disk *) metadata->data);
+                    start_sector = data.start;
+                    last_sector = (int) bytes_to_sectors(data.length);
                 }
+                rw_read_release(&metadata->rw_lock);
+            }
+            //printf("Not stuck at inode_close\n");
+            free_map_release(start_sector, last_sector);
+            /* Evict the cache entries for this inode */
+            for (int data_sector = start_sector; data_sector
+                 < last_sector; data_sector++) {
+                /* Evict the data sectors if they are already in cache */
+                evict_sector(data_sector);
             }
             /* Evict the metadata cache entry */
-            evict_block(metadata);
+            evict_sector(inode->sector);
         }
 
         free(inode); 
@@ -300,8 +325,22 @@ void inode_allow_write (struct inode *inode) {
 
 /*! Returns the length, in bytes, of INODE's data. */
 off_t inode_length(const struct inode *inode) {
-    struct file_cache_entry *metadata
-        = find_file_cache_entry(inode->sector, true);
+    struct file_cache_entry *metadata;
+    bool success = false;
+    //printf("Stuck at inode_length?\n");
+    while (! success) {
+        metadata = find_file_cache_entry(inode->sector, true);
+        rw_read_acquire(&metadata->rw_lock);
+        if (verify_cache_entry_sector(metadata, inode->sector)) {
+            success = true;
+        }
+        else {
+            rw_read_release(&metadata->rw_lock);
+        }
+    }
+    //printf("Not stuck at inode_length\n");
     struct inode_disk data = *((struct inode_disk *) metadata->data);
-    return data.length;
+    int length = data.length;
+    rw_read_release(&metadata->rw_lock);
+    return length;
 }
