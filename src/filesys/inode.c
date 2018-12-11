@@ -103,6 +103,9 @@ static block_sector_t byte_to_sector(const struct inode *inode, off_t pos) {
     struct inode_disk data = *((struct inode_disk *) metadata->data);
     int length = data.length;
     rw_read_release(&metadata->rw_lock);
+    if (pos / BLOCK_SECTOR_SIZE >= 16384) {
+        PANIC("byte_to_sector: Cannot handle sector of this size!");
+    }
     if (pos < length)
         return sector_transform(inode, pos / BLOCK_SECTOR_SIZE);
     else
@@ -283,6 +286,7 @@ void inode_close(struct inode *inode) {
 
             block_sector_t to_free;
             for (size_t i = 0; i < bytes_to_sectors(data.length); i++) {
+                if (i >= 16384) PANIC("Cannot handle sector greater than 16384!");
                 to_free = sector_transform(inode, i);
                 free_map_release(to_free, 1);
                 // Evict the cache entry for this sector
@@ -318,8 +322,6 @@ off_t inode_read_at(struct inode *inode, void *buffer_,
     while (size > 0) {
         /* Disk sector to read, starting byte offset within sector. */
         block_sector_t sector_idx = byte_to_sector (inode, offset);
-        // Transform sector to corresponding non contiguous sector
-        sector_idx = sector_transform(inode, sector_idx);
         int sector_ofs = offset % BLOCK_SECTOR_SIZE;
 
         /* Bytes left in inode, bytes left in sector, lesser of the two. */
@@ -363,8 +365,6 @@ off_t inode_write_at(struct inode *inode, const void *buffer_,
     while (size > 0) {
         /* Sector to write, starting byte offset within sector. */
         block_sector_t sector_idx = byte_to_sector(inode, offset);
-        // Transform this to a non linear sector
-        sector_idx = sector_transform(inode, sector_idx);
         int sector_ofs = offset % BLOCK_SECTOR_SIZE;
 
         /* Bytes left in inode, bytes left in sector, lesser of the two. */
