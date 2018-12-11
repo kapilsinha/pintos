@@ -167,6 +167,7 @@ bool inode_create(block_sector_t sector, off_t length) {
                 indirect_block[i - 12] = s_i;
             }
             else if (i >= 140 && i < 16384) {// A doubly indirect block
+                PANIC("Double indirect block!");
                 if (i == 128) {// Allocate a sector for the double indirect
                     block_sector_t double_indirect;
                     if (!free_map_allocate(1, &double_indirect)) return false;
