@@ -80,21 +80,23 @@ block_sector_t sector_transform(struct inode *inode, block_sector_t sector) {
     }
     // Single indirect block, we need to read in the array from disk
     else if (sector >= 12 && sector < 140) {
-        block_sector_t indirect[128];
-        file_cache_read(data.indirect, indirect, BLOCK_SECTOR_SIZE, 0);
-        return indirect[sector - 12];
+        block_sector_t indirect;
+        file_cache_read(data.indirect, &indirect, sizeof(block_sector_t),
+            (sector - 12) * sizeof(block_sector_t));
+        return indirect;
     }
     else if (sector >= 140 && sector < 16384) {
         block_sector_t double_indirect[128];
         block_sector_t sector_indirect[128];
         // First, read in the double indirect sector
-        file_cache_read(data.double_indirect, double_indirect, BLOCK_SECTOR_SIZE, 0);
+        file_cache_read(data.double_indirect, double_indirect,
+            BLOCK_SECTOR_SIZE, 0);
         // Determine which double indirect sector we need
-        block_sector_t first_indirect = (sector - 12 - 128) / 128;
-        block_sector_t second_indirect = (sector - 12 - 128) % 128;
+        block_sector_t first_indirect = (sector - 140) / 128;
+        block_sector_t second_indirect = (sector - 140) % 128;
         // Read in the sector that actually contains the pointers to data
-        file_cache_read(double_indirect[first_indirect], sector_indirect, BLOCK_SECTOR_SIZE, 0);
-        printf("Returning sector: %lu\n", sector_indirect[second_indirect]);
+        file_cache_read(double_indirect[first_indirect], sector_indirect,
+            BLOCK_SECTOR_SIZE, 0);
         return sector_indirect[second_indirect];
     }
     else {
@@ -161,65 +163,59 @@ bool inode_create(block_sector_t sector, off_t length) {
     ASSERT(sizeof *disk_inode == BLOCK_SECTOR_SIZE);
 
     disk_inode = calloc(1, sizeof *disk_inode);
-    if (disk_inode != NULL) {
-        disk_inode->length = length;
-        disk_inode->magic = INODE_MAGIC;
-        disk_inode->indirect = 0;
-        disk_inode->double_indirect = 0;
-        bool single_indirect = false;
-        size_t sectors = bytes_to_sectors(length);
-        // If necessary, allocate a sector for the single indirect table
-        if (sectors >= 12) {
-            if (!free_map_allocate(1, &disk_inode->indirect)) return false;
-            single_indirect = true;
-        }
-        // Zeroes to fill in the sectors
-        char *zeroes = malloc(BLOCK_SECTOR_SIZE);
-        memset(zeroes, 0, BLOCK_SECTOR_SIZE);
-        block_sector_t indirect_block[NUM_SECTORS];
-        block_sector_t double_indirect[NUM_SECTORS];
-        // This is the sector in which the table that stores the data sectors is stored
-        block_sector_t data_table_sector;
-        // This is the sector for the actual data of the file
-        block_sector_t file_data_sector;
-        // This is the table that stores the sectors of the secondary tables
-        block_sector_t table_for_tables[NUM_SECTORS];
-        // This is the table that stores the sectors of the data
-        block_sector_t table_for_data[NUM_SECTORS];
-        size_t i = 0;
-        while (i < sectors) {
-            if (i < 12) {// This will be one of the direct blocks
-                if (!free_map_allocate(1, &file_data_sector)) return false;
-                disk_inode->direct[i] = file_data_sector;
-                block_write(fs_device, disk_inode->direct[i], zeroes);
-            }
-            else if (i >= 12 && i < 140) {// An indirect block
-                if (!free_map_allocate(1, &file_data_sector)) return false;
-                indirect_block[i - 12] = file_data_sector;
-            }
-            else {
-                PANIC("Cannot handle file of this size!");
-            }
-            i++;
-        }
-        // Need to write the indirect table to the sector
-        if (single_indirect) {
-            block_write(fs_device, disk_inode->indirect, indirect_block);
-        }
-        // DEBUGGING CODE
-        // printf("First indexing layer array: \n", );
-        // for (int i = 0; i < NUM_SECTORS; i++) {
-        // }
-        // Need to write all the double indirect tables to their sectors
-        printf("Right here: Double indirect sector: %lu\n", disk_inode->double_indirect);
-        if (disk_inode->double_indirect != 0) {
-            block_write(fs_device, disk_inode->double_indirect, table_for_tables);
-        }
-        block_write(fs_device, sector, disk_inode);
-        // Free memory
-        free(zeroes);
-        free(disk_inode);
+    if (disk_inode == NULL) return false;
+
+    disk_inode->length = length;
+    disk_inode->magic = INODE_MAGIC;
+    disk_inode->indirect = 0;
+    disk_inode->double_indirect = 0;
+    size_t sectors = bytes_to_sectors(length);
+    // If necessary, allocate a sector for the single indirect table
+    if (sectors >= 12) {
+        if (!free_map_allocate(1, &disk_inode->indirect)) return false;
     }
+    if (sectors >= 140) {
+        if (!free_map_allocate(1, &disk_inode->double_indirect)) return false;
+    }
+    // Zeroes to fill in the sectors
+    char *zeroes = malloc(BLOCK_SECTOR_SIZE);
+    memset(zeroes, 0, BLOCK_SECTOR_SIZE);
+    // This is the sector in which the table that stores the data sectors is stored
+    block_sector_t data_table_sector;
+    // This is the sector for the actual data of the file
+    block_sector_t file_data_sector;
+    size_t i = 0;
+    while (i < sectors) {
+        if (!free_map_allocate(1, &file_data_sector)) return false;
+        if (i < 12) {// This will be one of the direct blocks
+            disk_inode->direct[i] = file_data_sector;
+        }
+        else if (i >= 12 && i < 140) {// An indirect block
+            file_cache_write(disk_inode->indirect, &file_data_sector,
+                sizeof(block_sector_t), (i - 12) * sizeof(block_sector_t));
+        }
+        else if (i >= 140 && i < 16384) {// A double indirect block
+            if ((i - 140) % 128 == 0) {// We need to allocate a new table sector
+                if (!free_map_allocate(1, &data_table_sector)) return false;
+                // Write this new table sector to the primary table
+                file_cache_write(disk_inode->double_indirect, &data_table_sector,
+                    sizeof(block_sector_t), (i - 140) / 128 * sizeof(block_sector_t));
+            }
+            // We need to write the file_data_sector to the secondary table
+            file_cache_read(disk_inode->double_indirect, &data_table_sector,
+                sizeof(block_sector_t), (i - 140) / 128 * sizeof(block_sector_t));
+            file_cache_write(data_table_sector, &file_data_sector, sizeof(block_sector_t),
+                ((i - 140) % 128) * sizeof(block_sector_t));
+        }
+        else {
+            PANIC("Cannot handle file of this size!");
+        }
+        i++;
+    }
+    file_cache_write(sector, disk_inode, BLOCK_SECTOR_SIZE, 0);
+    // Free memory
+    free(zeroes);
+    free(disk_inode);
     return true;
 }
 
