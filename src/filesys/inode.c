@@ -18,7 +18,7 @@
 #define MAX_SECTORS 16384
 /* Number of sectors before we need to use a double indirect sector. */
 #define NUM_DOUBLE 140
-/* Size of the block_sector_t type which is used a lot. */
+/* Size of the block_sector_t type. */
 #define SEC_SIZE sizeof(block_sector_t)
 
 /*!
@@ -42,7 +42,6 @@ static inline size_t bytes_to_sectors(off_t size) {
     return DIV_ROUND_UP(size, BLOCK_SECTOR_SIZE);
 }
 
-
 /*! In-memory inode. */
 struct inode {
     struct list_elem elem;            /*!< Element in inode list. */
@@ -56,7 +55,7 @@ struct inode {
 block_sector_t sector_transform(struct inode *inode, block_sector_t sector);
 struct file_cache_entry *get_metadata(block_sector_t sector);
 bool inode_extend(struct inode_disk *disk_inode, block_sector_t sector,
-    size_t curr_sector, off_t length);
+    size_t curr_sectors, off_t length);
 
 /*!
  *  List of open inodes, so that opening a single inode twice
@@ -98,20 +97,23 @@ block_sector_t sector_transform(struct inode *inode, block_sector_t sector) {
     // Single indirect block, we need to read in the array from disk
     else if (sector >= NUM_DIRECT && sector < NUM_DOUBLE) {
         block_sector_t indirect;
-        file_cache_read(data.indirect, &indirect, SEC_SIZE,
-            (sector - NUM_DIRECT) * SEC_SIZE);
+        file_cache_read(data.indirect, &indirect, sizeof(block_sector_t),
+            (sector - NUM_DIRECT) * sizeof(block_sector_t));
         return indirect;
     }
     else if (sector >= NUM_DOUBLE && sector < MAX_SECTORS) {
-        block_sector_t second_indirect;
-        block_sector_t file_data_sector;
-        // Read in the first table to get sector of second table
-        file_cache_read(data.double_indirect, &second_indirect,
-            SEC_SIZE, (sector - NUM_DOUBLE) / NUM_SECTORS * SEC_SIZE);
+        block_sector_t double_indirect[NUM_SECTORS];
+        block_sector_t sector_indirect[NUM_SECTORS];
+        // First, read in the double indirect sector
+        file_cache_read(data.double_indirect, double_indirect,
+            BLOCK_SECTOR_SIZE, 0);
+        // Determine which double indirect sector we need
+        block_sector_t first_indirect = (sector - NUM_DOUBLE) / NUM_SECTORS;
+        block_sector_t second_indirect = (sector - NUM_DOUBLE) % NUM_SECTORS;
         // Read in the sector that actually contains the pointers to data
-        file_cache_read(second_indirect, &file_data_sector,
-            SEC_SIZE, (sector - NUM_DOUBLE) % NUM_SECTORS * SEC_SIZE);
-        return file_data_sector;
+        file_cache_read(double_indirect[first_indirect], sector_indirect,
+            BLOCK_SECTOR_SIZE, 0);
+        return sector_indirect[second_indirect];
     }
     else {
         PANIC("Cannot handle sector number greater than MAX_SECTORS!");
@@ -126,7 +128,18 @@ block_sector_t sector_transform(struct inode *inode, block_sector_t sector) {
  */
 static block_sector_t byte_to_sector(const struct inode *inode, off_t pos) {
     ASSERT(inode != NULL);
-    struct file_cache_entry *metadata = get_metadata(inode->sector);
+    struct file_cache_entry *metadata;
+    bool success = false;
+    while (! success) {
+        metadata = find_file_cache_entry(inode->sector, true);
+        rw_read_acquire(&metadata->rw_lock);
+        if (verify_cache_entry_sector(metadata, inode->sector)) {
+            success = true;
+        }
+        else {
+            rw_read_release(&metadata->rw_lock);
+        }
+    }
     struct inode_disk data = *((struct inode_disk *) metadata->data);
     int length = data.length;
     rw_read_release(&metadata->rw_lock);
@@ -138,6 +151,7 @@ static block_sector_t byte_to_sector(const struct inode *inode, off_t pos) {
     else
         return -1;
 }
+
 
 /*!
  * This function extends the length of an inode located in sector with
@@ -151,7 +165,7 @@ bool inode_extend(struct inode_disk *disk_inode, block_sector_t sector,
     if (sectors >= NUM_DIRECT && disk_inode->indirect == 0) {
         if (!free_map_allocate(1, &disk_inode->indirect)) return false;
     }
-    if (sectors >= NUM_DOUBLE && disk_inode->indirect == 0) {
+    if (sectors >= NUM_DOUBLE && disk_inode->double_indirect == 0) {
         if (!free_map_allocate(1, &disk_inode->double_indirect)) return false;
     }
     // TODO: MIGHT NEED TO ZERO OUT THE SECTORS
@@ -380,16 +394,16 @@ off_t inode_write_at(struct inode *inode, const void *buffer_,
 
     /* If we are trying to extend the file. */
     lock_acquire(&inode->extension_lock);
-    if (offset + size > inode_length(inode)) {
+    off_t curr_length = inode_length(inode);
+    if (offset + size > curr_length) {
         // Get the disk_inode for this sector
         struct file_cache_entry *metadata = get_metadata(inode->sector);
         struct inode_disk *disk_inode = (struct inode_disk *) metadata->data;
         // Allocate sectors as necessary
-        size_t num_current_sectors = bytes_to_sectors(inode_length(inode));
+        size_t num_current_sectors = bytes_to_sectors(curr_length);
         if (!inode_extend(disk_inode, inode->sector, num_current_sectors,
-            offset + size)) return 0;
-        // Update length
-        disk_inode->length += offset + size - inode_length(inode);
+            offset + size)) return false;
+        disk_inode->length += offset + size - curr_length;
         rw_read_release(&metadata->rw_lock);
         file_cache_write(inode->sector, disk_inode, BLOCK_SECTOR_SIZE, 0);
     }
@@ -445,7 +459,18 @@ void inode_allow_write (struct inode *inode) {
 
 /*! Returns the length, in bytes, of INODE's data. */
 off_t inode_length(const struct inode *inode) {
-    struct file_cache_entry *metadata = get_metadata(inode->sector);
+    struct file_cache_entry *metadata;
+    bool success = false;
+    while (! success) {
+        metadata = find_file_cache_entry(inode->sector, true);
+        rw_read_acquire(&metadata->rw_lock);
+        if (verify_cache_entry_sector(metadata, inode->sector)) {
+            success = true;
+        }
+        else {
+            rw_read_release(&metadata->rw_lock);
+        }
+    }
     struct inode_disk data = *((struct inode_disk *) metadata->data);
     int length = data.length;
     rw_read_release(&metadata->rw_lock);
