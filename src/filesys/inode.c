@@ -18,6 +18,8 @@
 #define MAX_SECTORS 16384
 /* Number of sectors before we need to use a double indirect sector. */
 #define NUM_DOUBLE 140
+/* Size of the block_sector_t type which is used a lot. */
+#define SEC_SIZE sizeof(block_sector_t)
 
 /*!
  *  On-disk inode.
@@ -40,6 +42,7 @@ static inline size_t bytes_to_sectors(off_t size) {
     return DIV_ROUND_UP(size, BLOCK_SECTOR_SIZE);
 }
 
+
 /*! In-memory inode. */
 struct inode {
     struct list_elem elem;            /*!< Element in inode list. */
@@ -52,6 +55,14 @@ struct inode {
 
 block_sector_t sector_transform(struct inode *inode, block_sector_t sector);
 struct file_cache_entry *get_metadata(block_sector_t sector);
+bool inode_extend(struct inode_disk *disk_inode, block_sector_t sector,
+    size_t curr_sector, off_t length);
+
+/*!
+ *  List of open inodes, so that opening a single inode twice
+ *  returns the same `struct inode'.
+ */
+static struct list open_inodes;
 
 /*!
  * Gets the file cache entry metadata given a sector.
@@ -87,23 +98,20 @@ block_sector_t sector_transform(struct inode *inode, block_sector_t sector) {
     // Single indirect block, we need to read in the array from disk
     else if (sector >= NUM_DIRECT && sector < NUM_DOUBLE) {
         block_sector_t indirect;
-        file_cache_read(data.indirect, &indirect, sizeof(block_sector_t),
-            (sector - NUM_DIRECT) * sizeof(block_sector_t));
+        file_cache_read(data.indirect, &indirect, SEC_SIZE,
+            (sector - NUM_DIRECT) * SEC_SIZE);
         return indirect;
     }
     else if (sector >= NUM_DOUBLE && sector < MAX_SECTORS) {
-        block_sector_t double_indirect[NUM_SECTORS];
-        block_sector_t sector_indirect[NUM_SECTORS];
-        // First, read in the double indirect sector
-        file_cache_read(data.double_indirect, double_indirect,
-            BLOCK_SECTOR_SIZE, 0);
-        // Determine which double indirect sector we need
-        block_sector_t first_indirect = (sector - NUM_DOUBLE) / NUM_SECTORS;
-        block_sector_t second_indirect = (sector - NUM_DOUBLE) % NUM_SECTORS;
+        block_sector_t second_indirect;
+        block_sector_t file_data_sector;
+        // Read in the first table to get sector of second table
+        file_cache_read(data.double_indirect, &second_indirect,
+            SEC_SIZE, (sector - NUM_DOUBLE) / NUM_SECTORS * SEC_SIZE);
         // Read in the sector that actually contains the pointers to data
-        file_cache_read(double_indirect[first_indirect], sector_indirect,
-            BLOCK_SECTOR_SIZE, 0);
-        return sector_indirect[second_indirect];
+        file_cache_read(second_indirect, &file_data_sector,
+            SEC_SIZE, (sector - NUM_DOUBLE) % NUM_SECTORS * SEC_SIZE);
+        return file_data_sector;
     }
     else {
         PANIC("Cannot handle sector number greater than MAX_SECTORS!");
@@ -118,18 +126,7 @@ block_sector_t sector_transform(struct inode *inode, block_sector_t sector) {
  */
 static block_sector_t byte_to_sector(const struct inode *inode, off_t pos) {
     ASSERT(inode != NULL);
-    struct file_cache_entry *metadata;
-    bool success = false;
-    while (! success) {
-        metadata = find_file_cache_entry(inode->sector, true);
-        rw_read_acquire(&metadata->rw_lock);
-        if (verify_cache_entry_sector(metadata, inode->sector)) {
-            success = true;
-        }
-        else {
-            rw_read_release(&metadata->rw_lock);
-        }
-    }
+    struct file_cache_entry *metadata = get_metadata(inode->sector);
     struct inode_disk data = *((struct inode_disk *) metadata->data);
     int length = data.length;
     rw_read_release(&metadata->rw_lock);
@@ -143,10 +140,59 @@ static block_sector_t byte_to_sector(const struct inode *inode, off_t pos) {
 }
 
 /*!
- *  List of open inodes, so that opening a single inode twice
- *  returns the same `struct inode'.
+ * This function extends the length of an inode located in sector with
+ * a total of curr_sectors so that it can fit length bytes. Returns true if
+ * successful, false othewise.
  */
-static struct list open_inodes;
+bool inode_extend(struct inode_disk *disk_inode, block_sector_t sector,
+    size_t curr_sectors, off_t length) {
+    size_t sectors = bytes_to_sectors(length);
+    // If necessary, allocate a sector for the single indirect table
+    if (sectors >= NUM_DIRECT && disk_inode->indirect == 0) {
+        if (!free_map_allocate(1, &disk_inode->indirect)) return false;
+    }
+    if (sectors >= NUM_DOUBLE && disk_inode->indirect == 0) {
+        if (!free_map_allocate(1, &disk_inode->double_indirect)) return false;
+    }
+    // TODO: MIGHT NEED TO ZERO OUT THE SECTORS
+    // Zeroes to fill in the sectors
+    char *zeroes = malloc(BLOCK_SECTOR_SIZE);
+    memset(zeroes, 0, BLOCK_SECTOR_SIZE);
+    // This is the sector in which the table that stores the data sectors is stored
+    block_sector_t data_table_sector;
+    // This is the sector for the actual data of the file
+    block_sector_t file_data_sector;
+    size_t i = curr_sectors;
+    while (i < sectors) {
+        if (!free_map_allocate(1, &file_data_sector)) return false;
+        if (i < NUM_DIRECT) {// This will be one of the direct blocks
+            disk_inode->direct[i] = file_data_sector;
+        }
+        else if (i >= NUM_DIRECT && i < NUM_DOUBLE) {// An indirect block
+            file_cache_write(disk_inode->indirect, &file_data_sector,
+                SEC_SIZE, (i - NUM_DIRECT) * SEC_SIZE);
+        }
+        // A double indirect block
+        else if (i >= NUM_DOUBLE && i < MAX_SECTORS) {
+            // We need to allocate a new table sector
+            if ((i - NUM_DOUBLE) % NUM_SECTORS == 0) {
+                if (!free_map_allocate(1, &data_table_sector)) return false;
+                // Write this new table sector to the primary table
+                file_cache_write(disk_inode->double_indirect, &data_table_sector,
+                    SEC_SIZE, (i - NUM_DOUBLE) / NUM_SECTORS * SEC_SIZE);
+            }
+            file_cache_write(data_table_sector, &file_data_sector, SEC_SIZE,
+                ((i - NUM_DOUBLE) % NUM_SECTORS) * SEC_SIZE);
+        }
+        else {
+            PANIC("Cannot handle file of this size!");
+        }
+        i++;
+    }
+    // Free memory
+    free(zeroes);
+    return true;
+}
 
 /*! Initializes the inode module. */
 void inode_init(void) {
@@ -175,58 +221,10 @@ bool inode_create(block_sector_t sector, off_t length) {
     disk_inode->magic = INODE_MAGIC;
     disk_inode->indirect = 0;
     disk_inode->double_indirect = 0;
-    size_t sectors = bytes_to_sectors(length);
-    size_t sec_size = sizeof(block_sector_t);
-    // If necessary, allocate a sector for the single indirect table
-    if (sectors >= NUM_DIRECT) {
-        if (!free_map_allocate(1, &disk_inode->indirect)) return false;
-    }
-    if (sectors >= NUM_DOUBLE) {
-        if (!free_map_allocate(1, &disk_inode->double_indirect)) return false;
-    }
-    // TODO: MIGHT NEED TO ZERO OUT THE SECTORS
-    // Zeroes to fill in the sectors
-    char *zeroes = malloc(BLOCK_SECTOR_SIZE);
-    memset(zeroes, 0, BLOCK_SECTOR_SIZE);
-    // This is the sector in which the table that stores the data sectors is stored
-    block_sector_t data_table_sector;
-    // This is the sector for the actual data of the file
-    block_sector_t file_data_sector;
-    size_t i = 0;
-    while (i < sectors) {
-        if (!free_map_allocate(1, &file_data_sector)) return false;
-        if (i < NUM_DIRECT) {// This will be one of the direct blocks
-            disk_inode->direct[i] = file_data_sector;
-        }
-        else if (i >= NUM_DIRECT && i < NUM_DOUBLE) {// An indirect block
-            file_cache_write(disk_inode->indirect, &file_data_sector,
-                sec_size, (i - NUM_DIRECT) * sec_size);
-        }
-        // A double indirect block
-        else if (i >= NUM_DOUBLE && i < MAX_SECTORS) {
-            // We need to allocate a new table sector
-            if ((i - NUM_DOUBLE) % NUM_SECTORS == 0) {
-                if (!free_map_allocate(1, &data_table_sector)) return false;
-                // Write this new table sector to the primary table
-                file_cache_write(disk_inode->double_indirect, &data_table_sector,
-                    sec_size, (i - NUM_DOUBLE) / NUM_SECTORS * sec_size);
-            }
-            // We need to write the file_data_sector to the secondary table
-            file_cache_read(disk_inode->double_indirect, &data_table_sector,
-                sec_size, (i - NUM_DOUBLE) / NUM_SECTORS * sec_size);
-            file_cache_write(data_table_sector, &file_data_sector, sec_size,
-                ((i - NUM_DOUBLE) % NUM_SECTORS) * sec_size);
-        }
-        else {
-            PANIC("Cannot handle file of this size!");
-        }
-        i++;
-    }
+    bool ret = inode_extend(disk_inode, sector, 0, length);
     file_cache_write(sector, disk_inode, BLOCK_SECTOR_SIZE, 0);
-    // Free memory
-    free(zeroes);
     free(disk_inode);
-    return true;
+    return ret;
 }
 
 /*!
@@ -388,52 +386,8 @@ off_t inode_write_at(struct inode *inode, const void *buffer_,
         struct inode_disk *disk_inode = (struct inode_disk *) metadata->data;
         // Allocate sectors as necessary
         size_t num_current_sectors = bytes_to_sectors(inode_length(inode));
-        size_t num_needed_sectors = bytes_to_sectors(offset + size);
-        size_t sec_size = sizeof(block_sector_t);
-        // If necessary, allocate a sector for the single indirect table
-        if (num_needed_sectors >= NUM_DIRECT && disk_inode->indirect == 0) {
-            if (!free_map_allocate(1, &disk_inode->indirect)) return false;
-        }
-        if (num_needed_sectors >= NUM_DOUBLE && disk_inode->double_indirect == 0) {
-            if (!free_map_allocate(1, &disk_inode->double_indirect)) return false;
-        }
-        // Zeroes to fill in the sectors
-        char *zeroes = malloc(BLOCK_SECTOR_SIZE);
-        memset(zeroes, 0, BLOCK_SECTOR_SIZE);
-        // This is the sector in which the table that stores the data sectors is stored
-        block_sector_t data_table_sector;
-        // This is the sector for the actual data of the file
-        block_sector_t file_data_sector;
-        size_t i = num_current_sectors;
-        while (i < num_needed_sectors) {
-            if (!free_map_allocate(1, &file_data_sector)) return false;
-            if (i < NUM_DIRECT) {// This will be one of the direct blocks
-                disk_inode->direct[i] = file_data_sector;
-            }
-            else if (i >= NUM_DIRECT && i < NUM_DOUBLE) {// An indirect block
-                file_cache_write(disk_inode->indirect, &file_data_sector,
-                    sec_size, (i - NUM_DIRECT) * sec_size);
-            }
-            // A double indirect block
-            else if (i >= NUM_DOUBLE && i < MAX_SECTORS) {
-                // We need to allocate a new table sector
-                if ((i - NUM_DOUBLE) % NUM_SECTORS == 0) {
-                    if (!free_map_allocate(1, &data_table_sector)) return false;
-                    // Write this new table sector to the primary table
-                    file_cache_write(disk_inode->double_indirect, &data_table_sector,
-                        sec_size, (i - NUM_DOUBLE) / NUM_SECTORS * sec_size);
-                }
-                // We need to write the file_data_sector to the secondary table
-                file_cache_read(disk_inode->double_indirect, &data_table_sector,
-                    sec_size, (i - NUM_DOUBLE) / NUM_SECTORS * sec_size);
-                file_cache_write(data_table_sector, &file_data_sector, sec_size,
-                    ((i - NUM_DOUBLE) % NUM_SECTORS) * sec_size);
-            }
-            else {
-                PANIC("Cannot handle file of this size!");
-            }
-            i++;
-        }
+        if (!inode_extend(disk_inode, inode->sector, num_current_sectors,
+            offset + size)) return 0;
         // Update length
         disk_inode->length += offset + size - inode_length(inode);
         rw_read_release(&metadata->rw_lock);
@@ -491,18 +445,7 @@ void inode_allow_write (struct inode *inode) {
 
 /*! Returns the length, in bytes, of INODE's data. */
 off_t inode_length(const struct inode *inode) {
-    struct file_cache_entry *metadata;
-    bool success = false;
-    while (! success) {
-        metadata = find_file_cache_entry(inode->sector, true);
-        rw_read_acquire(&metadata->rw_lock);
-        if (verify_cache_entry_sector(metadata, inode->sector)) {
-            success = true;
-        }
-        else {
-            rw_read_release(&metadata->rw_lock);
-        }
-    }
+    struct file_cache_entry *metadata = get_metadata(inode->sector);
     struct inode_disk data = *((struct inode_disk *) metadata->data);
     int length = data.length;
     rw_read_release(&metadata->rw_lock);
