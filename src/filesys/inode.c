@@ -400,10 +400,10 @@ off_t inode_write_at(struct inode *inode, const void *buffer_,
         size_t num_needed_sectors = bytes_to_sectors(offset + size);
         size_t sec_size = sizeof(block_sector_t);
         // If necessary, allocate a sector for the single indirect table
-        if (num_needed_sectors >= NUM_DIRECT) {
+        if (num_needed_sectors >= NUM_DIRECT && disk_inode->indirect == 0) {
             if (!free_map_allocate(1, &disk_inode->indirect)) return false;
         }
-        if (num_needed_sectors >= NUM_DOUBLE) {
+        if (num_needed_sectors >= NUM_DOUBLE && disk_inode->double_indirect == 0) {
             if (!free_map_allocate(1, &disk_inode->double_indirect)) return false;
         }
         // Zeroes to fill in the sectors
