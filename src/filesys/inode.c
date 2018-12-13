@@ -333,17 +333,6 @@ off_t inode_read_at(struct inode *inode, void *buffer_,
     uint8_t *buffer = buffer_;
     off_t bytes_read = 0;
 
-    /* If we are trying to read past the end of the file, we want to wait
-    for it to be extended. */
-    lock_acquire(&inode->extension_lock);
-    if (offset + size > inode_length(inode)) {
-        lock_release(&inode->extension_lock);
-        return 0;
-    }
-    else {
-        lock_release(&inode->extension_lock);
-    }
-
     while (size > 0) {
 
         /* Disk sector to read, starting byte offset within sector. */
@@ -351,7 +340,9 @@ off_t inode_read_at(struct inode *inode, void *buffer_,
         int sector_ofs = offset % BLOCK_SECTOR_SIZE;
 
         /* Bytes left in inode, bytes left in sector, lesser of the two. */
+        lock_acquire(&inode->extension_lock);
         off_t inode_left = inode_length(inode) - offset;
+        lock_release(&inode->extension_lock);
         int sector_left = BLOCK_SECTOR_SIZE - sector_ofs;
         int min_left = inode_left < sector_left ? inode_left : sector_left;
 
