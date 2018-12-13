@@ -128,18 +128,7 @@ block_sector_t sector_transform(struct inode *inode, block_sector_t sector) {
  */
 static block_sector_t byte_to_sector(const struct inode *inode, off_t pos) {
     ASSERT(inode != NULL);
-    struct file_cache_entry *metadata;
-    bool success = false;
-    while (! success) {
-        metadata = find_file_cache_entry(inode->sector, true);
-        rw_read_acquire(&metadata->rw_lock);
-        if (verify_cache_entry_sector(metadata, inode->sector)) {
-            success = true;
-        }
-        else {
-            rw_read_release(&metadata->rw_lock);
-        }
-    }
+    struct file_cache_entry *metadata = get_metadata(inode->sector);
     struct inode_disk data = *((struct inode_disk *) metadata->data);
     int length = data.length;
     rw_read_release(&metadata->rw_lock);
@@ -459,18 +448,7 @@ void inode_allow_write (struct inode *inode) {
 
 /*! Returns the length, in bytes, of INODE's data. */
 off_t inode_length(const struct inode *inode) {
-    struct file_cache_entry *metadata;
-    bool success = false;
-    while (! success) {
-        metadata = find_file_cache_entry(inode->sector, true);
-        rw_read_acquire(&metadata->rw_lock);
-        if (verify_cache_entry_sector(metadata, inode->sector)) {
-            success = true;
-        }
-        else {
-            rw_read_release(&metadata->rw_lock);
-        }
-    }
+    struct file_cache_entry *metadata = get_metadata(inode->sector);
     struct inode_disk data = *((struct inode_disk *) metadata->data);
     int length = data.length;
     rw_read_release(&metadata->rw_lock);
