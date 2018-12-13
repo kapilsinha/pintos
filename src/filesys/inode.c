@@ -47,6 +47,7 @@ struct inode {
     int open_cnt;                     /*!< Number of openers. */
     bool removed;                     /*!< True if deleted, false otherwise. */
     int deny_write_cnt;               /*!< 0: writes ok, >0: deny writes. */
+    struct lock extension_lock;       /*!< Lock used for extending the file. */
 };
 
 block_sector_t sector_transform(struct inode *inode, block_sector_t sector);
@@ -201,8 +202,10 @@ bool inode_create(block_sector_t sector, off_t length) {
             file_cache_write(disk_inode->indirect, &file_data_sector,
                 sec_size, (i - NUM_DIRECT) * sec_size);
         }
-        else if (i >= NUM_DOUBLE && i < MAX_SECTORS) {// A double indirect block
-            if ((i - NUM_DOUBLE) % NUM_SECTORS == 0) {// We need to allocate a new table sector
+        // A double indirect block
+        else if (i >= NUM_DOUBLE && i < MAX_SECTORS) {
+            // We need to allocate a new table sector
+            if ((i - NUM_DOUBLE) % NUM_SECTORS == 0) {
                 if (!free_map_allocate(1, &data_table_sector)) return false;
                 // Write this new table sector to the primary table
                 file_cache_write(disk_inode->double_indirect, &data_table_sector,
@@ -256,6 +259,7 @@ struct inode * inode_open(block_sector_t sector) {
     inode->open_cnt = 1;
     inode->deny_write_cnt = 0;
     inode->removed = false;
+    lock_init(&inode->extension_lock);
     return inode;
 }
 
@@ -329,7 +333,19 @@ off_t inode_read_at(struct inode *inode, void *buffer_,
     uint8_t *buffer = buffer_;
     off_t bytes_read = 0;
 
+    /* If we are trying to read past the end of the file, we want to wait
+    for it to be extended. */
+    lock_acquire(&inode->extension_lock);
+    if (offset + size > inode_length(inode)) {
+        lock_release(&inode->extension_lock);
+        return 0;
+    }
+    else {
+        lock_release(&inode->extension_lock);
+    }
+
     while (size > 0) {
+
         /* Disk sector to read, starting byte offset within sector. */
         block_sector_t sector_idx = byte_to_sector (inode, offset);
         int sector_ofs = offset % BLOCK_SECTOR_SIZE;
@@ -372,6 +388,68 @@ off_t inode_write_at(struct inode *inode, const void *buffer_,
 
     if (inode->deny_write_cnt)
         return 0;
+
+    /* If we are trying to extend the file. */
+    lock_acquire(&inode->extension_lock);
+    if (offset + size > inode_length(inode)) {
+        // Get the disk_inode for this sector
+        struct file_cache_entry *metadata = get_metadata(inode->sector);
+        struct inode_disk *disk_inode = (struct inode_disk *) metadata->data;
+        // Allocate sectors as necessary
+        size_t num_current_sectors = bytes_to_sectors(inode_length(inode));
+        size_t num_needed_sectors = bytes_to_sectors(offset + size);
+        size_t sec_size = sizeof(block_sector_t);
+        // If necessary, allocate a sector for the single indirect table
+        if (num_needed_sectors >= NUM_DIRECT) {
+            if (!free_map_allocate(1, &disk_inode->indirect)) return false;
+        }
+        if (num_needed_sectors >= NUM_DOUBLE) {
+            if (!free_map_allocate(1, &disk_inode->double_indirect)) return false;
+        }
+        // Zeroes to fill in the sectors
+        char *zeroes = malloc(BLOCK_SECTOR_SIZE);
+        memset(zeroes, 0, BLOCK_SECTOR_SIZE);
+        // This is the sector in which the table that stores the data sectors is stored
+        block_sector_t data_table_sector;
+        // This is the sector for the actual data of the file
+        block_sector_t file_data_sector;
+        size_t i = num_current_sectors;
+        while (i < num_needed_sectors) {
+            if (!free_map_allocate(1, &file_data_sector)) return false;
+            if (i < NUM_DIRECT) {// This will be one of the direct blocks
+                disk_inode->direct[i] = file_data_sector;
+            }
+            else if (i >= NUM_DIRECT && i < NUM_DOUBLE) {// An indirect block
+                file_cache_write(disk_inode->indirect, &file_data_sector,
+                    sec_size, (i - NUM_DIRECT) * sec_size);
+            }
+            // A double indirect block
+            else if (i >= NUM_DOUBLE && i < MAX_SECTORS) {
+                // We need to allocate a new table sector
+                if ((i - NUM_DOUBLE) % NUM_SECTORS == 0) {
+                    if (!free_map_allocate(1, &data_table_sector)) return false;
+                    // Write this new table sector to the primary table
+                    file_cache_write(disk_inode->double_indirect, &data_table_sector,
+                        sec_size, (i - NUM_DOUBLE) / NUM_SECTORS * sec_size);
+                }
+                // We need to write the file_data_sector to the secondary table
+                file_cache_read(disk_inode->double_indirect, &data_table_sector,
+                    sec_size, (i - NUM_DOUBLE) / NUM_SECTORS * sec_size);
+                file_cache_write(data_table_sector, &file_data_sector, sec_size,
+                    ((i - NUM_DOUBLE) % NUM_SECTORS) * sec_size);
+            }
+            else {
+                PANIC("Cannot handle file of this size!");
+            }
+            i++;
+        }
+        // Update length
+        disk_inode->length += offset + size - inode_length(inode);
+        rw_read_release(&metadata->rw_lock);
+        file_cache_write(inode->sector, disk_inode, BLOCK_SECTOR_SIZE, 0);
+    }
+    lock_release(&inode->extension_lock);
+
     while (size > 0) {
         /* Sector to write, starting byte offset within sector. */
         block_sector_t sector_idx = byte_to_sector(inode, offset);
