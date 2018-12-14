@@ -22,7 +22,7 @@ void filesys_init(bool format) {
     inode_init();
     free_map_init();
 
-    if (format) 
+    if (format)
         do_format();
 
     free_map_open();
@@ -31,6 +31,7 @@ void filesys_init(bool format) {
 
 /*! Shuts down the file system module, writing any unwritten data to disk. */
 void filesys_done(void) {
+    write_cache();
     free_map_close();
 }
 
@@ -46,7 +47,7 @@ bool filesys_create(struct dir *cur_dir, const char *name, off_t initial_size) {
                     inode_create(get_dir_metadata_sector(cur_dir),
                         inode_sector, initial_size, false) &&
                     dir_add(dir, name, inode_sector));
-    if (!success && inode_sector != 0) 
+    if (!success && inode_sector != 0)
         free_map_release(inode_sector, 1);
     dir_close(dir);
     return success;
@@ -64,7 +65,7 @@ bool filesys_mkdir(struct dir *cur_dir, const char *name) {
                     inode_create(get_dir_metadata_sector(cur_dir),
                         inode_sector, 0, true) &&
                     dir_add(dir, name, inode_sector));
-    if (!success && inode_sector != 0) 
+    if (!success && inode_sector != 0)
         free_map_release(inode_sector, 1);
     dir_close(dir);
     return success;
@@ -111,4 +112,3 @@ static void do_format(void) {
     free_map_close();
     printf("done.\n");
 }
-

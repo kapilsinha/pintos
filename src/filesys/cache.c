@@ -1,6 +1,7 @@
 #include "cache.h"
 #include "filesys/filesys.h"
 #include <string.h>
+#include "threads/interrupt.h"
 
 /* File cache table containing all the cache entries */
 static struct file_cache_entry file_cache_table[MAX_CACHE_SIZE];
@@ -21,6 +22,19 @@ void file_cache_table_init(void) {
     }
     /* Initialize the clock hand to the first element in the cache table */
     clock_hand = 0;
+}
+
+void write_cache(void) {
+    struct file_cache_entry *entry;
+    for (int i = 0; i < MAX_CACHE_SIZE; i++) {
+        entry = &file_cache_table[i];
+        if (entry->sector == 0) continue;
+        lock_acquire(&entry->evict_lock);
+        rw_write_acquire(&entry->rw_lock);
+        block_write(fs_device, entry->sector, entry->data);
+        rw_write_release(&entry->rw_lock);
+        lock_release(&entry->evict_lock);
+    }
 }
 
 /*!
@@ -67,7 +81,7 @@ struct file_cache_entry *find_file_cache_entry(block_sector_t sector,
     struct file_cache_entry *entry = NULL;
     // TODO: DON'T USE A GLOBAL LOCK!!!
     for (int i = 0; i < MAX_CACHE_SIZE; i++) {
-        if (file_cache_table[i].sector == sector 
+        if (file_cache_table[i].sector == sector
             && file_cache_table[i].in_use) {
             entry = &file_cache_table[i];
             //printf("Found entry in cache\n");
@@ -171,9 +185,9 @@ bool load_from_disk(struct file_cache_entry *cache_entry,
     return true;
 }
 
-/*! 
+/*!
  *  Evicts the to_evict file_cache_entry. If the cache entry is dirty,
- *  it is written back to disk. The writer's lock is acquired prior to 
+ *  it is written back to disk. The writer's lock is acquired prior to
  *  eviction to ensure we hav exclusive access to the cache entry.
  *  The cache entry being evicted must be in use (otherwise there is no
  *  need to evict it).
