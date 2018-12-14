@@ -79,6 +79,20 @@ int dir_get_length(struct dir *dir) {
     return (int) inode_length(dir->inode);
 }
 
+/*! Returns the number of dir_entries in DIR */
+int dir_get_num_entries(struct dir *dir) {
+    int num_entries = 0;
+    struct dir_entry e;
+    off_t pos = dir->pos;
+    while (inode_read_at(dir->inode, &e, sizeof(e), pos) == sizeof(e)) {
+        pos += sizeof(e);
+        if (e.in_use) {
+            num_entries++;
+        }
+    }
+    return num_entries;
+}
+
 /*! Returns the directory containing DIR. */
 struct dir *dir_get_parent_dir(struct dir *dir) {
     return dir_open(get_parent_dir_inode(dir->inode));

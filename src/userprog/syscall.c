@@ -240,8 +240,7 @@ bool sys_create(const char *file_name, unsigned initial_size, struct intr_frame 
     struct short_path *sp = get_dir_from_path(t->cur_dir, file_name);
     bool ret = false;
     /* Ensure that the path did not correspond to a directory */
-    ASSERT(! sp->is_dir);
-    if (sp->dir && sp->filename) {
+    if (! sp->is_dir && sp->dir && sp->filename) {
         ret = filesys_create(sp->dir, sp->filename, initial_size);
         dir_close(sp->dir);
         free((char *) sp->filename);
@@ -268,16 +267,20 @@ bool sys_remove(const char *file_name, struct intr_frame *f UNUSED) {
     struct short_path *sp = get_dir_from_path(t->cur_dir, file_name);
     bool ret = false;
     if (sp->dir && sp->filename) {
+        // printf("Is dir?: %d\n", sp->is_dir);
+        // printf("Dir length: %d\n", dir_get_length(sp->dir));
+        // printf("Dir num entries: %d\n", dir_get_num_entries(sp->dir));
         if (! sp->is_dir) {
             /* If the path corresponds to an ordinary file, simply remove it */
             ret = filesys_remove(sp->dir, sp->filename);
+            dir_close(sp->dir);
         }
-        else if (dir_get_length(sp->dir) == 0) {
+        else if (dir_get_num_entries(sp->dir) == 0) {
             /* If the path corresponds to a directory, remove it only if it
              * is empty */
             ret = filesys_remove(dir_get_parent_dir(sp->dir), sp->filename);
+            dir_close(dir_get_parent_dir(sp->dir));
         }
-        dir_close(sp->dir);
         free((char *) sp->filename);
     }
     free(sp);

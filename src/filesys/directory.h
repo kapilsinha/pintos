@@ -32,6 +32,7 @@ void dir_close(struct dir *);
 
 struct inode *dir_get_inode(struct dir *);
 int dir_get_length(struct dir *);
+int dir_get_num_entries(struct dir *);
 struct dir *dir_get_parent_dir(struct dir *);
 
 /* Reading and writing. */
