@@ -30,6 +30,8 @@ unsigned sys_tell(int fd, struct intr_frame *f);
 void sys_close(int fd, struct intr_frame *f);
 mapid_t sys_mmap(int fd, void *addr, struct intr_frame *f);
 void sys_munmap(mapid_t mapping, struct intr_frame *f);
+bool sys_isdir(int fd, struct intr_frame *f);
+int sys_inumber(int fd, struct intr_frame *f);
 void sys_nosys(struct intr_frame *f);
 
 #endif /* userprog/syscall.h */

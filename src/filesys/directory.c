@@ -19,10 +19,18 @@ struct dir_entry {
     bool in_use;                        /*!< In use or free? */
 };
 
+/*! Return the sector that contains the metadata (inode_disk) for a
+ *  given directory. We use the fact that inumber corresponds to a
+ *  sector number in Pintos */
+block_sector_t get_dir_metadata_sector(struct dir *dir) {
+    return inode_get_inumber(dir->inode);
+}
+
 /*! Creates a directory with space for ENTRY_CNT entries in the
     given SECTOR.  Returns true if successful, false on failure. */
-bool dir_create(block_sector_t sector, size_t entry_cnt) {
-    return inode_create(sector, entry_cnt * sizeof(struct dir_entry));
+bool dir_create(struct dir *cur_dir, block_sector_t sector, size_t entry_cnt) {
+    return inode_create(get_dir_metadata_sector(cur_dir), sector,
+        entry_cnt * sizeof(struct dir_entry), true);
 }
 
 /*! Opens and returns the directory for the given INODE, of which

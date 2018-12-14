@@ -209,6 +209,12 @@ tid_t child_thread_create(const char *name, int priority, thread_func *function,
     /* Set parent of this thread we are creating to current thread */
     t->parent = thread_current();
 
+    /* Set the current directory to the parent thread's current directory
+     * or set it to the root directory if the parent thread was created
+     * via thread_create (hence its cur_dir is NULL) */
+    t->cur_dir = t->parent->cur_dir
+        ? dir_reopen(t->parent->cur_dir) : dir_open_root();
+
     /* Allocate and initialize child_process struct */
     struct child_process *c = malloc(sizeof(struct child_process));
     if (c == NULL)
@@ -280,6 +286,9 @@ tid_t thread_create(const char *name, int priority, thread_func *function,
     /* Set parent of thread to NULL (if a thread is to be created as a child
      of its parent, it would call the child_create_thread function) */
     t->parent = NULL;
+
+    /* Set the current directory to the root directory */
+    t->cur_dir = NULL; //dir_open_root();
 
     /* Add to run queue. */
     thread_unblock(t);

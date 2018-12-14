@@ -29,9 +29,11 @@ struct inode_disk {
     block_sector_t direct[NUM_DIRECT];      /*!< Direct nodes. */
     block_sector_t indirect;                /*!< Indirect nodes. */
     block_sector_t double_indirect;         /*!< Double indirect nodes. */
+    unsigned is_dir;                        /*!< 1 if dir, 0 if file. */
+    block_sector_t parent_dir_sector;       /*!< Parent dir's inode->sector */
     off_t length;                           /*!< File size in bytes. */
     unsigned magic;                         /*!< Magic number. */
-    uint32_t unused[112];                   /*!< Not used. */
+    uint32_t unused[110];                   /*!< Not used. */
 };
 
 /*!
@@ -54,7 +56,7 @@ struct inode {
 
 block_sector_t sector_transform(struct inode *inode, block_sector_t sector);
 struct file_cache_entry *get_metadata(block_sector_t sector);
-bool inode_extend(struct inode_disk *disk_inode, block_sector_t sector,
+bool inode_extend(struct inode_disk *disk_inode,
     size_t curr_sectors, off_t length);
 
 /*!
@@ -126,7 +128,7 @@ block_sector_t sector_transform(struct inode *inode, block_sector_t sector) {
  *  Returns -1 if INODE does not contain data for a byte at offset
  *  POS.
  */
-static block_sector_t byte_to_sector(const struct inode *inode, off_t pos) {
+static block_sector_t byte_to_sector(struct inode *inode, off_t pos) {
     ASSERT(inode != NULL);
     struct file_cache_entry *metadata = get_metadata(inode->sector);
     struct inode_disk data = *((struct inode_disk *) metadata->data);
@@ -147,8 +149,8 @@ static block_sector_t byte_to_sector(const struct inode *inode, off_t pos) {
  * a total of curr_sectors so that it can fit length bytes. Returns true if
  * successful, false othewise.
  */
-bool inode_extend(struct inode_disk *disk_inode, block_sector_t sector,
-    size_t curr_sectors, off_t length) {
+bool inode_extend(struct inode_disk *disk_inode, size_t curr_sectors,
+    off_t length) {
     size_t sectors = bytes_to_sectors(length);
     // If necessary, allocate a sector for the single indirect table
     if (sectors >= NUM_DIRECT && disk_inode->indirect == 0) {
@@ -209,7 +211,8 @@ void inode_init(void) {
  *  Returns true if successful.
  *  Returns false if memory or disk allocation fails.
  */
-bool inode_create(block_sector_t sector, off_t length) {
+bool inode_create(block_sector_t parent_dir_sector, block_sector_t sector,
+    off_t length, bool is_dir) {
     struct inode_disk *disk_inode = NULL;
 
     ASSERT(length >= 0);
@@ -220,11 +223,13 @@ bool inode_create(block_sector_t sector, off_t length) {
     disk_inode = calloc(1, sizeof *disk_inode);
     if (disk_inode == NULL) return false;
 
-    disk_inode->length = length;
-    disk_inode->magic = INODE_MAGIC;
     disk_inode->indirect = 0;
     disk_inode->double_indirect = 0;
-    bool ret = inode_extend(disk_inode, sector, 0, length);
+    disk_inode->is_dir = is_dir ? 1 : 0;
+    disk_inode->parent_dir_sector = parent_dir_sector;
+    disk_inode->length = length;
+    disk_inode->magic = INODE_MAGIC;
+    bool ret = inode_extend(disk_inode, 0, length);
     file_cache_write(sector, disk_inode, BLOCK_SECTOR_SIZE, 0);
     free(disk_inode);
     return ret;
@@ -390,7 +395,7 @@ off_t inode_write_at(struct inode *inode, const void *buffer_,
         struct inode_disk *disk_inode = (struct inode_disk *) metadata->data;
         // Allocate sectors as necessary
         size_t num_current_sectors = bytes_to_sectors(curr_length);
-        if (!inode_extend(disk_inode, inode->sector, num_current_sectors,
+        if (!inode_extend(disk_inode, num_current_sectors,
             offset + size)) return false;
         disk_inode->length += offset + size - curr_length;
         rw_read_release(&metadata->rw_lock);
@@ -453,4 +458,15 @@ off_t inode_length(const struct inode *inode) {
     int length = data.length;
     rw_read_release(&metadata->rw_lock);
     return length;
+}
+
+/*! Returns true if inode represents a directory,
+ *  false if inode represents an ordinary file
+ */
+bool inode_isdir(struct inode *inode) {
+    struct file_cache_entry *metadata = get_metadata(inode->sector);
+    struct inode_disk data = *(struct inode_disk *)metadata->data;
+    bool ret = (data.is_dir == 1);
+    rw_read_release(&metadata->rw_lock);
+    return ret;
 }

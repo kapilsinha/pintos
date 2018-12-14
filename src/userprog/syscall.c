@@ -235,7 +235,7 @@ bool sys_create(const char *file_name, unsigned initial_size, struct intr_frame 
     if (! valid_pointer((void *) file_name, f)) {
         sys_exit(-1, f);
     }
-    return filesys_create(file_name, initial_size);
+    return filesys_create(thread_current()->cur_dir, file_name, initial_size);
 }
 
 /*!
@@ -244,10 +244,13 @@ bool sys_create(const char *file_name, unsigned initial_size, struct intr_frame 
  *  an open file does not close it.
  */
 bool sys_remove(const char *file_name, struct intr_frame *f UNUSED) {
-    return filesys_remove(file_name);
+    return filesys_remove(thread_current()->cur_dir, file_name);
 }
 
-/* Opens the file with file_name and returns a file descriptor. */
+/* Opens the file or directory with file_name and returns a file descriptor.
+ * A directory is treated like a file in that it has an inode and pos we 
+ * store, so this function treats directories as ordinary files without
+ * loss of generality */
 int sys_open(const char *file_name, struct intr_frame *f) {
     struct thread *t = thread_current();
     /* If the filename is invalid, immediately exit */
@@ -284,7 +287,7 @@ int sys_open(const char *file_name, struct intr_frame *f) {
 
     /* If this thread has not previously opened this file, call open */
     if (! opened_previously) {
-        file_struct = filesys_open(file_name);
+        file_struct = filesys_open(t->cur_dir, file_name);
         if (! file_struct) { // If the file could not be opened
             return -1;
         }
@@ -543,6 +546,30 @@ void sys_munmap(mapid_t mapping, struct intr_frame *f UNUSED) {
     }
 }
 
+/*! Returns true if fd represents a directory,
+ *  false if fd represents an ordinary file
+ */
+bool sys_isdir(int fd, struct intr_frame *f UNUSED) {
+    struct file *file = fd_to_file(thread_current(), fd);
+    if (! file) {
+        return -1;
+    }
+    return file_isdir(file);
+}
+
+/*!
+ *  Returns the inode number of the inode associated with fd
+ *  (which may be an ordinary file or a directory). We use the
+ *  sector number as the inode number
+ */
+int sys_inumber(int fd, struct intr_frame *f UNUSED) {
+    struct file *file = fd_to_file(thread_current(), fd);
+    if (! file) {
+        return -1;
+    }
+    return file_inumber(file);
+}
+
 /*! Called for system calls that are not implemented. */
 void sys_nosys(struct intr_frame *f UNUSED) {
     printf("ENOSYS: Function not implemented.\n");
@@ -649,6 +676,16 @@ static void syscall_handler(struct intr_frame *f) {
         case SYS_MUNMAP:
             mapping = (mapid_t) peek_stack(f, 1);
             sys_munmap(mapping, f);
+            break;
+
+        case SYS_ISDIR:
+            fd = (int) peek_stack(f, 1);
+            f->eax = sys_isdir(fd, f);
+            break;
+
+        case SYS_INUMBER:
+            fd = (int) peek_stack(f, 1);
+            f->eax = sys_inumber(fd, f);
             break;
 
         default:
