@@ -11,7 +11,7 @@
 Kapil Sinha <ksinha@caltech.edu>
 Karthik Nair <knair@caltech.edu>
 
->> Specify how many late tokens you are using on this assignment:  
+>> Specify how many late tokens you are using on this assignment:
 
 >> What is the Git repository and commit hash for your submission?
 
@@ -36,13 +36,44 @@ Karthik Nair <knair@caltech.edu>
 >> `struct' member, global or static variable, `typedef', or
 >> enumeration.  Identify the purpose of each in 25 words or less.
 
+/*!
+ *  On-disk inode.
+ *  Must be exactly BLOCK_SECTOR_SIZE bytes long.
+ */
+struct inode_disk {
+    block_sector_t direct[NUM_DIRECT];      /*!< Direct nodes. */
+    block_sector_t indirect;                /*!< Indirect nodes. */
+    block_sector_t double_indirect;         /*!< Double indirect nodes. */
+    off_t length;                           /*!< File size in bytes. */
+    unsigned magic;                         /*!< Magic number. */
+    uint32_t unused[112];                   /*!< Not used. */
+};
+
+/*! In-memory inode. */
+struct inode {
+    struct list_elem elem;            /*!< Element in inode list. */
+    block_sector_t sector;            /*!< Sector number of disk location. */
+    int open_cnt;                     /*!< Number of openers. */
+    bool removed;                     /*!< True if deleted, false otherwise. */
+    int deny_write_cnt;               /*!< 0: writes ok, >0: deny writes. */
+    struct lock extension_lock;       /*!< Lock used for extending the file. */
+};
+
 >> A2: What is the maximum size of a file supported by your inode
 >> structure?  Show your work.
+
+    The maximum size of a file supported by our inode structure is
+    16,524 * 512 = 8,460,288 bytes. This is because given our structure, we can
+    have 12 direct blocks, 128 indirect blocks, and 128 * 128 double indirect
+    blocks which adds up to 16,524.
 
 ---- SYNCHRONIZATION ----
 
 >> A3: Explain how your code avoids a race if two processes attempt to
 >> extend a file at the same time.
+
+    We added an extension lock to our inode struct which must be acquired
+    anytime a process tries to read a file, write to a file, or extend a file.
 
 >> A4: Suppose processes A and B both have file F open, both
 >> positioned at end-of-file.  If A reads and B writes F at the same
@@ -152,5 +183,3 @@ website.
 >> students in future quarters?
 
 >> Any other comments?
-
-
