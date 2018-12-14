@@ -232,18 +232,20 @@ int sys_wait(tid_t pid, struct intr_frame *f UNUSED) {
  */
 bool sys_create(const char *file_name, unsigned initial_size, struct intr_frame *f) {
     /* If the filename is invalid, immediately exit */
-    if (! valid_pointer((void *) file_name, f)) {
+    if (! valid_pointer((void *) file_name, f) || strlen(file_name) == 0) {
         sys_exit(-1, f);
     }
     struct thread *t = thread_current();
 
     struct short_path *sp = get_dir_from_path(t->cur_dir, file_name);
     bool ret = false;
+    /* Ensure that the path did not correspond to a directory */
+    ASSERT(! sp->is_dir);
     if (sp->dir && sp->filename) {
         ret = filesys_create(sp->dir, sp->filename, initial_size);
+        dir_close(sp->dir);
+        free((char *) sp->filename);
     }
-    dir_close(sp->dir);
-    free((char *) sp->filename);
     free(sp);
     return ret;
 }
@@ -266,10 +268,18 @@ bool sys_remove(const char *file_name, struct intr_frame *f UNUSED) {
     struct short_path *sp = get_dir_from_path(t->cur_dir, file_name);
     bool ret = false;
     if (sp->dir && sp->filename) {
-        ret = filesys_remove(sp->dir, sp->filename);
+        if (! sp->is_dir) {
+            /* If the path corresponds to an ordinary file, simply remove it */
+            ret = filesys_remove(sp->dir, sp->filename);
+        }
+        else if (dir_get_length(sp->dir) == 0) {
+            /* If the path corresponds to a directory, remove it only if it
+             * is empty */
+            ret = filesys_remove(dir_get_parent_dir(sp->dir), sp->filename);
+        }
+        dir_close(sp->dir);
+        free((char *) sp->filename);
     }
-    dir_close(sp->dir);
-    free((char *) sp->filename);
     free(sp);
     return ret;
 }
@@ -304,14 +314,18 @@ int sys_open(const char *file_name, struct intr_frame *f) {
         return -1;
     }
     struct short_path *sp = get_dir_from_path(t->cur_dir, file_name);
+    if (! sp->dir || ! sp->filename) {
+        free(sp);
+        return -1;
+    }
 
     // bool val = true;
     // char *name = malloc(NAME_MAX + 1);
     // while (val) {
     //     val = dir_readdir(sp->dir, name);
+    //     printf("Name: %s\n", name);
     // }
     // free(name);
-
     /*
      * Iterate over all files this thread has opened for the current file we
      * seek to open
@@ -328,7 +342,12 @@ int sys_open(const char *file_name, struct intr_frame *f) {
 
     /* If this thread has not previously opened this file, call open */
     if (! opened_previously) {
-        file_struct = filesys_open(sp->dir, sp->filename);
+        if (sp->is_dir) {
+            file_struct = filesys_open(dir_get_parent_dir(sp->dir), sp->filename);
+        }
+        else {
+            file_struct = filesys_open(sp->dir, sp->filename);
+        }
         if (! file_struct) { // If the file could not be opened
             return -1;
         }
@@ -601,27 +620,18 @@ void sys_munmap(mapid_t mapping, struct intr_frame *f UNUSED) {
 /*! Changes the current working directory of the current process to
  *  the argument DIR. Returns true on success, false on failure.
  */
-bool sys_chdir(const char *dir, struct intr_frame *f UNUSED) {
-    /* Hack to use the same get_dir_from_path function. We append
-     * a '/x' to the directory so the function treats the x as
-     * a file and everything else (DIR) as our directory */
-    /* TODO: Replace the hack and do it in a better way */
-    char *dir_hack = malloc(strlen(dir) + 2);
-    memcpy(dir_hack, dir, strlen(dir));
-    dir_hack[strlen(dir)] = '/';
-    dir_hack[strlen(dir) + 1] = 'x';
-    dir_hack[strlen(dir) + 2] = '\0';
-    
+bool sys_chdir(const char *dir, struct intr_frame *f UNUSED) {    
     struct thread *t = thread_current();
-    struct short_path *sp = get_dir_from_path(t->cur_dir, dir_hack);
-    if (! sp->dir) {
-        return false;
+    struct short_path *sp = get_dir_from_path(t->cur_dir, dir);
+    bool ret = false;
+    if (sp->is_dir && sp->dir && sp->filename) {
+        dir_close(t->cur_dir);
+        t->cur_dir = sp->dir;
+        free((char *) sp->filename);
+        ret = true;
     }
-    dir_close(t->cur_dir);
-    t->cur_dir = sp->dir;
-    free((char *) sp->filename);
     free(sp);
-    return true;
+    return ret;
 }
 
 /*! Creates a directory named DIR (relative or absolute path).
@@ -638,11 +648,11 @@ bool sys_mkdir(const char *dir, struct intr_frame *f UNUSED) {
     struct thread *t = thread_current();
     struct short_path *sp = get_dir_from_path(t->cur_dir, dir);
     bool ret = false;
-    if (sp->dir && sp->filename) {
+    if (! sp->is_dir && sp->dir && sp->filename) {
         ret = filesys_mkdir(sp->dir, sp->filename);
+        dir_close(sp->dir);
+        free((char *) sp->filename);
     }
-    dir_close(sp->dir);
-    free((char *) sp->filename);
     free(sp);
     return ret;
 }

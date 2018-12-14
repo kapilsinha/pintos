@@ -74,6 +74,16 @@ struct inode * dir_get_inode(struct dir *dir) {
     return dir->inode;
 }
 
+/*! Returns the length of DIR (in bytes). */
+int dir_get_length(struct dir *dir) {
+    return (int) inode_length(dir->inode);
+}
+
+/*! Returns the directory containing DIR. */
+struct dir *dir_get_parent_dir(struct dir *dir) {
+    return dir_open(get_parent_dir_inode(dir->inode));
+}
+
 /*! Searches DIR for a file with the given NAME.
     If successful, returns true, sets *EP to the directory entry
     if EP is non-null, and sets *OFSP to the byte offset of the
@@ -211,23 +221,25 @@ bool dir_readdir(struct dir *dir, char name[NAME_MAX + 1]) {
 }
 
 /*!
- *  Reads in the path and starting returns the directory one above the path
- *  That is, if path is a/b/c, this function would return the dir for b
- *  if a and b are valid directories, and regardless of whether c is an
- *  ordinary file or a directory.
- *  We could do this via str_tok_r but we do it manually
- *  to have more control of memory management. It is the caller's
- *  responsibility to close the returned dir.
- *  Returns NULL if an invalid path is given
+ *  Reads in the path and attempts to return the lowest directory.
+ *  Returns a short_path struct containing a dir * and a filename *
+ *  and is_dir flag. There are three possible outcomes:
+ *  1. The path is invalid - dir * and filename * are set to NULL
+ *  2. The path is valid and refers to a normal file - dir * is set
+ *     to this directory and filename * contains the name of the file
+ *  3. The path is valid and refers to a directory - dir * is set to
+ *     the directory that the path refers to and filename * contains
+ *     the name of this lowest directory
  */
 struct short_path *get_dir_from_path(struct dir *cur_dir, const char *path) {
     ASSERT(cur_dir != NULL);
     struct dir *dir;
-    struct dir *prev_dir;
+    struct dir *parent_dir;
     struct inode *inode;
     char *next_dir_name = malloc((NAME_MAX + 1) * sizeof(char));
     int start;
     int end = (int) strlen(path) - 1;
+    bool is_dir;
 
     /* If path starts with '/', the path is absolute so we set the start
      * directory to the root directory.
@@ -241,6 +253,7 @@ struct short_path *get_dir_from_path(struct dir *cur_dir, const char *path) {
         dir = dir_reopen(cur_dir);
         start = 0;
     }
+    parent_dir = dir;
 
     /* Get rid of the trailing '/'s at the end of the path */
     for (int j = (int) strlen(path) - 1; j >= 0; j--) {
@@ -253,23 +266,31 @@ struct short_path *get_dir_from_path(struct dir *cur_dir, const char *path) {
     /* Iterate over the path from left to right until either the current
      * directory does not exist or we finish iterating */
     for (int i = start; i <= end; i++) {
+        parent_dir = dir;
         /* If dir is NULL or was removed, the path is invalid. Return NULL */
-        if (! dir || inode_isremoved(dir->inode)) {
+        if (! parent_dir || inode_isremoved(parent_dir->inode)) {
+            if (parent_dir && parent_dir->inode) {
+                dir_close(parent_dir);
+            }
+            parent_dir = NULL;
             break;
         }
         if (path[start] == '/') {
             start = i + 1;
             continue;
         }
-        if (path[i] != '/') {
+        if (path[i] != '/' && i != end) {
             continue;
+        }
+        if (i == end) {
+            i++;
         }
         /* If the directory name is too large, the directory is invalid */
         if (i - start > NAME_MAX) {
-            dir = NULL;
+            dir_close(parent_dir);
+            parent_dir = NULL;
             break;
         }
-        prev_dir = dir;
         memcpy(next_dir_name, path + start, i - start);
         next_dir_name[i - start] = '\0';
         if (strcmp(next_dir_name, ".") == 0) {
@@ -286,21 +307,45 @@ struct short_path *get_dir_from_path(struct dir *cur_dir, const char *path) {
             dir = dir_open(inode);
         }
         /* Reclaim the old directory inode */
-        dir_close(prev_dir);
-        start = i + 1;
+        if (i < end) {
+            dir_close(parent_dir);
+            start = i + 1;
+        }
     }
-    /* If the file name is too large, the filename is invalid */
-    if ((int) strlen(path) - start > NAME_MAX
-        || (int) strlen(path) - start == 0) {
-        next_dir_name[0] = '\0';
+    /* If the parent_dir is valid, determine if the path we seek corresponds
+     * to a directory (dir is also valid) or for an ordinary file 
+     * (dir is invalid) */
+    if (! parent_dir) {
+        /* If the containing directory is invalid, set dir to NULL */
+        dir = NULL;
+        free(next_dir_name);
+        next_dir_name = NULL;
+        is_dir = false;
     }
-    else {
+    else if (! dir || inode_isremoved(dir->inode) || ! inode_isdir(dir->inode)) {
+        /* If the containing directory is valid but the path refers to an
+         * ordinary file, set dir to the parent_dir and also return the name
+         * of the file */
+        dir = parent_dir;
         memcpy(next_dir_name, path + start, (int) strlen(path) - start);
         next_dir_name[(int) strlen(path) - start] = '\0';
+        is_dir = false;
     }
+    else {
+        /* If the containing directory is valid and the path refers to a
+         * subdirectory, set dir to this subdirectory and return NULL for
+         * the name of the file */
+        memcpy(next_dir_name, path + start, (int) strlen(path) - start);
+        next_dir_name[(int) strlen(path) - start] = '\0';
+        is_dir = true;
+    }
+
     struct short_path *sp = malloc(sizeof(struct short_path));
     sp->dir = dir;
     sp->filename = next_dir_name;
+    sp->is_dir = is_dir;
+    //printf("Is dir?: %d\n", sp->is_dir);
+    //printf("Filename: %s\n", sp->filename);
     return sp;
 }
 
