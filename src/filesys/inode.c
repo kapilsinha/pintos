@@ -81,6 +81,7 @@ struct file_cache_entry *get_metadata(block_sector_t sector) {
             rw_read_release(&metadata->rw_lock);
         }
     }
+    
     return metadata;
 }
 
@@ -91,6 +92,7 @@ struct file_cache_entry *get_metadata(block_sector_t sector) {
 block_sector_t sector_transform(struct inode *inode, block_sector_t sector) {
     // This should already be in cache but if it isn't, add it
     struct file_cache_entry *metadata = get_metadata(inode->sector);
+    rw_read_release(&metadata->rw_lock); // YEE
     struct inode_disk data = *(struct inode_disk *)metadata->data;
     rw_read_release(&metadata->rw_lock);
     if (sector < NUM_DIRECT) {// This is in one of the direct block
@@ -130,14 +132,10 @@ block_sector_t sector_transform(struct inode *inode, block_sector_t sector) {
  */
 static block_sector_t byte_to_sector(struct inode *inode, off_t pos) {
     ASSERT(inode != NULL);
-    struct file_cache_entry *metadata = get_metadata(inode->sector);
-    struct inode_disk data = *((struct inode_disk *) metadata->data);
-    int length = data.length;
-    rw_read_release(&metadata->rw_lock);
     if (pos / BLOCK_SECTOR_SIZE >= MAX_SECTORS) {
         PANIC("byte_to_sector: Cannot handle sector of this size!");
     }
-    if (pos < length)
+    if (pos < inode_length(inode))
         return sector_transform(inode, pos / BLOCK_SECTOR_SIZE);
     else
         return -1;
@@ -186,6 +184,8 @@ bool inode_extend(struct inode_disk *disk_inode, size_t curr_sectors,
                 file_cache_write(disk_inode->double_indirect, &data_table_sector,
                     SEC_SIZE, (i - NUM_DOUBLE) / NUM_SECTORS * SEC_SIZE);
             }
+            file_cache_read(disk_inode->double_indirect, &data_table_sector,
+                SEC_SIZE, (i - NUM_DOUBLE) / NUM_SECTORS * SEC_SIZE);
             file_cache_write(data_table_sector, &file_data_sector, SEC_SIZE,
                 ((i - NUM_DOUBLE) % NUM_SECTORS) * SEC_SIZE);
         }
@@ -299,13 +299,11 @@ void inode_close(struct inode *inode) {
         /* Deallocate blocks if removed. */
         if (inode->removed) {
             free_map_release(inode->sector, 1);
-            struct file_cache_entry *metadata = get_metadata(inode->sector);
-            struct inode_disk data = *(struct inode_disk *) metadata->data;
 
             // We have the inode_disk, now we need to free all its sectors
             block_sector_t to_free;
             // TODO: Not sure if free first then evict or vice versa
-            for (size_t i = 0; i < bytes_to_sectors(data.length); i++) {
+            for (size_t i = 0; i < bytes_to_sectors(inode_length(inode)); i++) {
                 if (i >= MAX_SECTORS) PANIC("Cannot handle sector greater than MAX_SECTORS!");
                 to_free = sector_transform(inode, i);
                 free_map_release(to_free, 1);
@@ -313,7 +311,6 @@ void inode_close(struct inode *inode) {
                 evict_sector(to_free);
             }
             /* Evict the metadata cache entry */
-            rw_read_release(&metadata->rw_lock);
             evict_sector(inode->sector);
         }
         free(inode);
