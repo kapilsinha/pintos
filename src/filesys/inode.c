@@ -460,6 +460,22 @@ off_t inode_length(const struct inode *inode) {
     return length;
 }
 
+/*! Opens the argument INODE's parent directory inode */
+struct inode *get_parent_dir_inode(struct inode *inode) {
+    struct file_cache_entry *metadata = get_metadata(inode->sector);
+    struct inode_disk data = *((struct inode_disk *) metadata->data);
+    block_sector_t parent_dir_sector = data.parent_dir_sector;
+    rw_read_release(&metadata->rw_lock);
+    return inode_open(parent_dir_sector);
+}
+
+/*! Returns true if the directory has been removed,
+ *  false otherwise. Simply checks the inode removed flag
+ */
+bool inode_isremoved(struct inode *inode) {
+    return inode->removed;
+}
+
 /*! Returns true if inode represents a directory,
  *  false if inode represents an ordinary file
  */

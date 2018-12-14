@@ -14,6 +14,11 @@
 struct inode;
 struct dir;
 
+struct short_path {
+	struct dir *dir;
+	const char *filename;
+};
+
 block_sector_t get_dir_metadata_sector(struct dir *dir);
 
 /* Opening and closing directories. */
@@ -30,5 +35,8 @@ bool dir_add(struct dir *, const char *name, block_sector_t);
 bool dir_remove(struct dir *, const char *name);
 bool dir_readdir(struct dir *, char name[NAME_MAX + 1]);
 
+/* Processing a directory path */
+struct short_path *get_dir_from_path(struct dir *cur_dir, const char *path);
+void print_absolute_path(struct dir *dir);
 #endif /* filesys/directory.h */
 
