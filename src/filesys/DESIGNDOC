@@ -74,6 +74,7 @@ struct inode {
 
     We added an extension lock to our inode struct which must be acquired
     anytime a process tries to read a file, write to a file, or extend a file.
+    This prevents two processes from extending the same file at the same time.
 
 >> A4: Suppose processes A and B both have file F open, both
 >> positioned at end-of-file.  If A reads and B writes F at the same
@@ -82,12 +83,28 @@ struct inode {
 >> nonzero data, A is not allowed to see all zeros.  Explain how your
 >> code avoids this race.
 
+    We added an extension lock to our inode struct. This lock must be acquired
+    for both reads and writes. For reads, the lock is simply acquired to check
+    if we are trying to read past the end of the file. This keeps A from reading
+    while B is extending the file because B holds this extension lock until it
+    is completely done extending the file and writing all of its data.
+
 >> A5: Explain how your synchronization design provides "fairness".
 >> File access is "fair" if readers cannot indefinitely block writers
 >> or vice versa.  That is, many processes reading from a file cannot
 >> prevent forever another process from writing the file, and many
 >> processes writing to a file cannot prevent another process forever
 >> from reading the file.
+
+    We implemented our own shared-exclusive lock which is used whenever trying
+    to read or write to a cache entry. Our lock implementation does not allow
+    an additional reader if writers are waiting to keep writers from getting
+    starved.
+    Since we have a shared-exclusive lock, readers can never block other
+    readers. Also, since when a writer releases the lock, it broadcasts to all
+    readers to allow them to read, and until this set number of permitted
+    readers are done reading, no other writers are allowed access to the lock.
+    This way, neither readers nor writers can get starved.
 
 ---- RATIONALE ----
 
@@ -96,6 +113,11 @@ struct inode {
 >> indirect blocks?  If not, why did you choose an alternative inode
 >> structure, and what advantages and disadvantages does your
 >> structure have, compared to a multilevel index?
+
+    Yes, our inode structure is a multilevel index. We tried to keep our
+    implementation as simple as possible and therefore kept the number of
+    direct, indirect, and doubly indirect blocks to a minimum. Thus, we used
+    12 direct blocks, 1 indirect block, and 1 doubly indirect block.
 
 			    SUBDIRECTORIES
 			    ==============
@@ -106,10 +128,14 @@ struct inode {
 >> `struct' member, global or static variable, `typedef', or
 >> enumeration.  Identify the purpose of each in 25 words or less.
 
+TODO
+
 ---- ALGORITHMS ----
 
 >> B2: Describe your code for traversing a user-specified path.  How
 >> do traversals of absolute and relative paths differ?
+
+TODO
 
 ---- SYNCHRONIZATION ----
 
@@ -137,10 +163,44 @@ struct inode {
 >> `struct' member, global or static variable, `typedef', or
 >> enumeration.  Identify the purpose of each in 25 words or less.
 
+/* A single entry for the cache representing one block. */
+struct file_cache_entry {
+    /* Sector contains metadata if the sector holds an inode_disk, and
+     * contains file data if the sector holds a data (file) sector */
+    block_sector_t sector;  /* Sector whose data we hold, key to hash map */
+    void *data;             /* Cached data contained at the inode
+                             * (originally, contents at inode->sector) */
+    bool in_use;            /* 1 if entry is being used (data is valid),
+                             * else 0 */
+    bool accessed;          /* 1 if data has been accessed, else 0 */
+    bool dirty;             /* 1 if data has been written to, else 0 */
+    struct rw_lock rw_lock; /* Per cache entry read-write lock */
+    struct lock evict_lock; /* TODO: Why do I need this??? */
+};
+
+/*! Read-write lock. */
+struct rw_lock {
+    struct lock lock;          /* Read/write lock */
+    int num_readers;           /* Number of readers currently holding lock */
+    int num_readers_waiting;   /* Number of readers waiting for the lock */
+    int num_writers_waiting;   /* Number of writers waiting for the lock */
+    int num_readers_permitted; /* Number of readers to let read (writer should
+                                * not acquire the lock until this many readers
+                                * have acquired the lock */
+    struct condition readers;  /* Contains the list of waiting reader threads */
+    struct condition writers;  /* Contains the list of waiting writer threads */
+};
+
 ---- ALGORITHMS ----
 
 >> C2: Describe how your cache replacement algorithm chooses a cache
 >> block to evict.
+
+    We implemented the clock eviction policy to determine which cache entry to
+    evict. We initialize the "clock hand" to point to the first entry of the
+    cache table. When choosing a policy to evict, we first check the entry
+    pointed to by the "clock hand". If it is marked as accessed, we clear it and
+    move on to the next entry. Otherwise, we return it.
 
 >> C3: Describe your implementation of write-behind.
 
@@ -152,13 +212,31 @@ struct inode {
 >> buffer cache block, how are other processes prevented from evicting
 >> that block?
 
+    Our evict_block function tries to acquire the read/write lock as a writer
+    and the eviction lock. This keeps a process from evicting the block while it
+    is being accessed because it would get blocked on trying to acquire the
+    read/write lock.
+
 >> C6: During the eviction of a block from the cache, how are other
 >> processes prevented from attempting to access the block?
+
+    When the evict_block function is evicting an entry from the cache, it tries
+    to acquire the read/write lock as a writer which means that it tries to
+    get exclusive access to the entry. This keeps other processes from trying
+    to read this entry or write to it.
 
 ---- RATIONALE ----
 
 >> C7: Describe a file workload likely to benefit from buffer caching,
 >> and workloads likely to benefit from read-ahead and write-behind.
+
+    If a process is repeatedly reading and writing to the same part of the file,
+    it would benefit from buffer caching because having a buffer cache would
+    reduce the number of times the process needs to access the disk. However, if
+    instead the process is looping through a fairly large file which has a size
+    greater than the buffer cache and reading and writing as it goes, it would
+    benefit more from read-ahead and write-behind because reading in the next
+    sector into the cache would speed up looping through the file.
 
 			   SURVEY QUESTIONS
 			   ================

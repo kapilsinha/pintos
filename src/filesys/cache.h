@@ -9,6 +9,7 @@
 
 #define MAX_CACHE_SIZE 64         /* maximum number of blocks in cache */
 
+/* A single entry for the cache representing one block. */
 struct file_cache_entry {
     /* Sector contains metadata if the sector holds an inode_disk, and
      * contains file data if the sector holds a data (file) sector */
@@ -16,7 +17,7 @@ struct file_cache_entry {
     void *data;             /* Cached data contained at the inode
                              * (originally, contents at inode->sector) */
     bool in_use;            /* 1 if entry is being used (data is valid),
-                             * else 0 */ 
+                             * else 0 */
     bool accessed;          /* 1 if data has been accessed, else 0 */
     bool dirty;             /* 1 if data has been written to, else 0 */
     struct rw_lock rw_lock; /* Per cache entry read-write lock */
