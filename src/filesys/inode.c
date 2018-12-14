@@ -90,12 +90,16 @@ struct file_cache_entry *get_metadata(block_sector_t sector) {
  * are not actually contiguous on disk.
  */
 block_sector_t sector_transform(struct inode *inode, block_sector_t sector) {
+    //printf("Looking for sector : %lu in inode : %08x\n", sector, inode);
     // This should already be in cache but if it isn't, add it
     struct file_cache_entry *metadata = get_metadata(inode->sector);
     rw_read_release(&metadata->rw_lock); // YEE
     struct inode_disk data = *(struct inode_disk *)metadata->data;
+    //printf("Found metadata at %08x\n", metadata->data);
     rw_read_release(&metadata->rw_lock);
     if (sector < NUM_DIRECT) {// This is in one of the direct block
+        //printf("sector returned: %lu\n", data.direct[sector]);
+        ASSERT(data.direct[sector] < fs_device->size);
         return data.direct[sector];
     }
     // Single indirect block, we need to read in the array from disk
@@ -103,6 +107,8 @@ block_sector_t sector_transform(struct inode *inode, block_sector_t sector) {
         block_sector_t indirect;
         file_cache_read(data.indirect, &indirect, sizeof(block_sector_t),
             (sector - NUM_DIRECT) * sizeof(block_sector_t));
+        ASSERT(indirect < fs_device->size);
+        //printf("Sector returned: %lu\n", indirect);
         return indirect;
     }
     else if (sector >= NUM_DOUBLE && sector < MAX_SECTORS) {
@@ -117,6 +123,8 @@ block_sector_t sector_transform(struct inode *inode, block_sector_t sector) {
         // Read in the sector that actually contains the pointers to data
         file_cache_read(double_indirect[first_indirect], sector_indirect,
             BLOCK_SECTOR_SIZE, 0);
+        ASSERT(sector_indirect[second_indirect] < fs_device->size);
+        //printf("Sector returned: %lu\n", sector_indirect[second_indirect]);
         return sector_indirect[second_indirect];
     }
     else {
@@ -166,17 +174,22 @@ bool inode_extend(struct inode_disk *disk_inode, size_t curr_sectors,
     // This is the sector for the actual data of the file
     block_sector_t file_data_sector;
     size_t i = curr_sectors;
-    while (i < sectors) {
+    //printf("Before extending: %lu\n", disk_inode->direct[0]);
+    while (i <= sectors) {
+        //printf("in loop with i = %lu and sectors = %lu\n", i, sectors);
         if (!free_map_allocate(1, &file_data_sector)) return false;
         if (i < NUM_DIRECT) {// This will be one of the direct blocks
+            //printf("direct\n");
             disk_inode->direct[i] = file_data_sector;
         }
         else if (i >= NUM_DIRECT && i < NUM_DOUBLE) {// An indirect block
+            //printf("indirect\n");
             file_cache_write(disk_inode->indirect, &file_data_sector,
                 SEC_SIZE, (i - NUM_DIRECT) * SEC_SIZE);
         }
         // A double indirect block
         else if (i >= NUM_DOUBLE && i < MAX_SECTORS) {
+            //printf("double indirect\n");
             // We need to allocate a new table sector
             if ((i - NUM_DOUBLE) % NUM_SECTORS == 0) {
                 if (!free_map_allocate(1, &data_table_sector)) return false;
@@ -194,6 +207,8 @@ bool inode_extend(struct inode_disk *disk_inode, size_t curr_sectors,
         }
         i++;
     }
+    //printf("After extending: %lu\n", disk_inode->direct[0]);
+    //printf("Sectors: %lu\n", sectors);
     // Free memory
     free(zeroes);
     return true;
@@ -222,7 +237,7 @@ bool inode_create(block_sector_t parent_dir_sector, block_sector_t sector,
 
     disk_inode = calloc(1, sizeof *disk_inode);
     if (disk_inode == NULL) return false;
-
+    memset(disk_inode->direct, 0, 12 * sizeof(block_sector_t));
     disk_inode->indirect = 0;
     disk_inode->double_indirect = 0;
     disk_inode->is_dir = is_dir ? 1 : 0;
@@ -230,6 +245,7 @@ bool inode_create(block_sector_t parent_dir_sector, block_sector_t sector,
     disk_inode->length = length;
     disk_inode->magic = INODE_MAGIC;
     bool ret = inode_extend(disk_inode, 0, length);
+    if (!ret) return false;
     file_cache_write(sector, disk_inode, BLOCK_SECTOR_SIZE, 0);
     free(disk_inode);
     return ret;
