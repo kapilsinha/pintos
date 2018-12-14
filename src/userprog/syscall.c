@@ -648,6 +648,9 @@ bool sys_mkdir(const char *dir, struct intr_frame *f UNUSED) {
         sys_exit(-1, f);
     }
     */
+    // struct dir *root = dir_open_root();
+    // printf("Root Length: %d\n", dir_get_length(root));
+    // dir_close(root);
     struct thread *t = thread_current();
     struct short_path *sp = get_dir_from_path(t->cur_dir, dir);
     bool ret = false;
@@ -668,9 +671,14 @@ bool sys_mkdir(const char *dir, struct intr_frame *f UNUSED) {
 bool sys_readdir(int fd, char *name, struct intr_frame *f) {
     /* Ensure that fd corresponds to a directory */
     ASSERT(sys_isdir(fd, f));
+    //printf("Name: %s\n", name);
     struct file *file = fd_to_file(thread_current(), fd);
-    struct dir *dir = dir_open(file_get_inode(file));
-    return dir_readdir(dir, name);
+    //struct dir *dir = dir_open(file_get_inode(file));
+    //bool ret = dir_readdir(dir, name);
+    /* TODO: the below casting is a hack. Fix it */
+    bool ret = dir_readdir((struct dir *) file, name);
+    //dir_close(dir);
+    return ret;
     /* TODO: When can I close the directory??? */
     //dir_close(dir);
 }

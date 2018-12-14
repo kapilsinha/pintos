@@ -98,6 +98,25 @@ struct dir *dir_get_parent_dir(struct dir *dir) {
     return dir_open(get_parent_dir_inode(dir->inode));
 }
 
+/*! Returns the name of the directory DIR. */
+const char *dir_get_name(struct dir *dir) {
+    block_sector_t dir_sector = get_dir_metadata_sector(dir);
+    struct dir *parent_dir = dir_get_parent_dir(dir);
+    struct dir_entry e;
+    off_t pos = dir->pos; // TODO: maybe just set to 0?
+    char *name = malloc((NAME_MAX + 1) * sizeof(char));
+    while (inode_read_at(parent_dir->inode, &e, sizeof(e), pos) == sizeof(e)) {
+        pos += sizeof(e);
+        if (e.inode_sector == dir_sector) {
+            memcpy(name, e.name, (int) strlen(e.name));
+            name[(int) strlen(e.name)] = '\0';
+            return name;
+        }
+    }
+    name[0] = '\0';
+    return name;
+}
+
 /*! Searches DIR for a file with the given NAME.
     If successful, returns true, sets *EP to the directory entry
     if EP is non-null, and sets *OFSP to the byte offset of the
@@ -349,17 +368,16 @@ struct short_path *get_dir_from_path(struct dir *cur_dir, const char *path) {
         /* If the containing directory is valid and the path refers to a
          * subdirectory, set dir to this subdirectory and return NULL for
          * the name of the file */
-        memcpy(next_dir_name, path + start, (int) strlen(path) - start);
-        next_dir_name[(int) strlen(path) - start] = '\0';
+        free(next_dir_name);
+        next_dir_name = (char *) dir_get_name(dir);
         is_dir = true;
     }
-
     struct short_path *sp = malloc(sizeof(struct short_path));
     sp->dir = dir;
     sp->filename = next_dir_name;
     sp->is_dir = is_dir;
-    //printf("Is dir?: %d\n", sp->is_dir);
-    //printf("Filename: %s\n", sp->filename);
+    // printf("Is dir?: %d\n", sp->is_dir);
+    // printf("Filename: %s\n", sp->filename);
     return sp;
 }
 

@@ -34,6 +34,7 @@ struct inode *dir_get_inode(struct dir *);
 int dir_get_length(struct dir *);
 int dir_get_num_entries(struct dir *);
 struct dir *dir_get_parent_dir(struct dir *);
+const char *dir_get_name(struct dir *);
 
 /* Reading and writing. */
 bool dir_lookup(const struct dir *, const char *name, struct inode **);

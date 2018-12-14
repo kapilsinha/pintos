@@ -15,7 +15,7 @@
 /* Number of block numbers that can fit in one sector. */
 #define NUM_SECTORS 128
 /* Maximum number of sectors for a file. */
-#define MAX_SECTORS 16384
+#define MAX_SECTORS 16524
 /* Number of sectors before we need to use a double indirect sector. */
 #define NUM_DOUBLE 140
 /* Size of the block_sector_t type. */
