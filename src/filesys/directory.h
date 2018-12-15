@@ -15,8 +15,8 @@ struct inode;
 struct dir;
 
 struct short_path {
-	struct dir *dir;	  /* directory containing the file */
-	const char *filename; /* name of the file the path refers to */
+	struct dir *dir;	  /* Directory containing the file */
+	const char *filename; /* Name of the file the path refers to */
 	bool is_dir; 		  /* True if filename is a dir,
 							 false if it is an ordinary file */
 };

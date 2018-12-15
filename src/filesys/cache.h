@@ -9,6 +9,7 @@
 
 #define MAX_CACHE_SIZE 64         /* maximum number of blocks in cache */
 
+/* Element in the cache array */
 struct file_cache_entry {
     /* Sector contains metadata if the sector holds an inode_disk, and
      * contains file data if the sector holds a data (file) sector */
@@ -20,7 +21,7 @@ struct file_cache_entry {
     bool accessed;          /* 1 if data has been accessed, else 0 */
     bool dirty;             /* 1 if data has been written to, else 0 */
     struct rw_lock rw_lock; /* Per cache entry read-write lock */
-    struct lock evict_lock; /* TODO: Why do I need this??? */
+    struct lock evict_lock; /* Lock that must be acquired on evict/load */
 };
 
 void file_cache_table_init(void);

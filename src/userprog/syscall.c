@@ -252,24 +252,14 @@ bool sys_create(const char *file_name, unsigned initial_size, struct intr_frame 
 /*!
  *  Deletes the file called file. Returns true if successful, false otherwise. A
  *  file may be removed regardless of whether it is open or closed, and removing
- *  an open file does not close it.
- *  TODO: Update this function to remove directories. The logic I think should be
- *  to return false automatically if there is stuff in the directory
- *  (inode->length != 0 I think?). Otherwise, do the same shit as before
- *  (call filesys_remove, which removes it from the parent directory and then on
- *  process exit, if the open_cnt == 0, the directory is file_closed and actually
- *  deleted). BUT you have to check in all open and current that the curr_dir is
- *  not removed i.e. if dir->inode->removed == true, then disallow opens and
- *  creates
+ *  an open file does not close it. A directory is considered to be a file and
+ *  can be removed as long as it is empty
  */
 bool sys_remove(const char *file_name, struct intr_frame *f UNUSED) {
     struct thread *t = thread_current();
     struct short_path *sp = get_dir_from_path(t->cur_dir, file_name);
     bool ret = false;
     if (sp->dir && sp->filename) {
-        // printf("Is dir?: %d\n", sp->is_dir);
-        // printf("Dir length: %d\n", dir_get_length(sp->dir));
-        // printf("Dir num entries: %d\n", dir_get_num_entries(sp->dir));
         if (! sp->is_dir) {
             /* If the path corresponds to an ordinary file, simply remove it */
             ret = filesys_remove(sp->dir, sp->filename);
@@ -287,12 +277,12 @@ bool sys_remove(const char *file_name, struct intr_frame *f UNUSED) {
     return ret;
 }
 
-/*! Opens the file or directory with file_name and returns a file descriptor.
+/*!
+ *  Opens the file or directory with file_name and returns a file descriptor.
  *  A directory is treated like a file in that it has an inode and pos we 
  *  store, so this function treats directories as ordinary files without
  *  loss of generality
- *  TODO: Currently we didn't change open to handle directories - change it
- *  if it is required (but I think it's not) */
+ */
 int sys_open(const char *file_name, struct intr_frame *f) {
     /* If the filename is invalid, immediately exit */
     if (! valid_pointer((void *) file_name, f)) {
@@ -322,13 +312,6 @@ int sys_open(const char *file_name, struct intr_frame *f) {
         return -1;
     }
 
-    // bool val = true;
-    // char *name = malloc(NAME_MAX + 1);
-    // while (val) {
-    //     val = dir_readdir(sp->dir, name);
-    //     printf("Name: %s\n", name);
-    // }
-    // free(name);
     /*
      * Iterate over all files this thread has opened for the current file we
      * seek to open
@@ -382,7 +365,8 @@ int sys_filesize(int fd, struct intr_frame *f UNUSED) {
     return file_length(file);
 }
 
-/*! Reads a total of size bytes from the file open as fd into buffer. Returns
+/*!
+ *  Reads a total of size bytes from the file open as fd into buffer. Returns
  *  the total number of bytes read. 0 if at the end of the file, -1 if the
  *  file could not be read.
  */
@@ -391,7 +375,7 @@ int sys_read(int fd, const void *buffer, unsigned size, struct intr_frame *f) {
     if (!valid_pointer_range((void *) buffer, size, f) || fd == 1) {
         sys_exit(-1, f);
     }
-    if (fd == 0) { // STDIN
+    if (fd == 0) { /* STDIN */
         unsigned int i = 0;
         while (i < size) {
             *((char*)buffer++) = input_getc();
@@ -423,7 +407,7 @@ int sys_write(int fd, const void *buffer, unsigned size, struct intr_frame *f) {
     if (sys_isdir(fd, f)) {
         sys_exit(-1, f);
     }
-    if (fd == 1) { // STDOUT
+    if (fd == 1) { /* STDOUT */
         putbuf(buffer, size);
         return size;
     }
@@ -643,14 +627,6 @@ bool sys_chdir(const char *dir, struct intr_frame *f UNUSED) {
  *  in DIR does not already exist
  */
 bool sys_mkdir(const char *dir, struct intr_frame *f UNUSED) {
-    /*
-    if (! valid_pointer((void *) dir, f)) {
-        sys_exit(-1, f);
-    }
-    */
-    // struct dir *root = dir_open_root();
-    // printf("Root Length: %d\n", dir_get_length(root));
-    // dir_close(root);
     struct thread *t = thread_current();
     struct short_path *sp = get_dir_from_path(t->cur_dir, dir);
     bool ret = false;
@@ -671,16 +647,10 @@ bool sys_mkdir(const char *dir, struct intr_frame *f UNUSED) {
 bool sys_readdir(int fd, char *name, struct intr_frame *f) {
     /* Ensure that fd corresponds to a directory */
     ASSERT(sys_isdir(fd, f));
-    //printf("Name: %s\n", name);
     struct file *file = fd_to_file(thread_current(), fd);
-    //struct dir *dir = dir_open(file_get_inode(file));
-    //bool ret = dir_readdir(dir, name);
-    /* TODO: the below casting is a hack. Fix it */
+    /* Cast file to a dir to extract the first two elements of the struct */
     bool ret = dir_readdir((struct dir *) file, name);
-    //dir_close(dir);
     return ret;
-    /* TODO: When can I close the directory??? */
-    //dir_close(dir);
 }
 
 /*! Returns true if fd represents a directory,

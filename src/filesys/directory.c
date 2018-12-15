@@ -98,12 +98,13 @@ struct dir *dir_get_parent_dir(struct dir *dir) {
     return dir_open(get_parent_dir_inode(dir->inode));
 }
 
-/*! Returns the name of the directory DIR. */
+/*! Returns the name of the directory DIR by navigating to the parent
+ *  directory and then accessing its dir_entry. */
 const char *dir_get_name(struct dir *dir) {
     block_sector_t dir_sector = get_dir_metadata_sector(dir);
     struct dir *parent_dir = dir_get_parent_dir(dir);
     struct dir_entry e;
-    off_t pos = dir->pos; // TODO: maybe just set to 0?
+    off_t pos = dir->pos;
     char *name = malloc((NAME_MAX + 1) * sizeof(char));
     while (inode_read_at(parent_dir->inode, &e, sizeof(e), pos) == sizeof(e)) {
         pos += sizeof(e);
@@ -146,7 +147,8 @@ static bool lookup(const struct dir *dir, const char *name,
 /*! Searches DIR for a file with the given NAME and returns true if one exists,
     false otherwise.  On success, sets *INODE to an inode for the file,
     otherwise to a null pointer.  The caller must close *INODE. */
-bool dir_lookup(const struct dir *dir, const char *name, struct inode **inode) {
+bool dir_lookup(const struct dir *dir, const char *name,
+    struct inode **inode) {
     struct dir_entry e;
 
     ASSERT(dir != NULL);
@@ -184,7 +186,6 @@ bool dir_add(struct dir *dir, const char *name, block_sector_t inode_sector) {
     /* Set OFS to offset of free slot.
        If there are no free slots, then it will be set to the
        current end-of-file.
-     
        inode_read_at() will only return a short read at end of file.
        Otherwise, we'd need to verify that we didn't get a short
        read due to something intermittent such as low memory. */
@@ -355,7 +356,8 @@ struct short_path *get_dir_from_path(struct dir *cur_dir, const char *path) {
         next_dir_name = NULL;
         is_dir = false;
     }
-    else if (! dir || inode_isremoved(dir->inode) || ! inode_isdir(dir->inode)) {
+    else if (! dir || inode_isremoved(dir->inode)
+        || ! inode_isdir(dir->inode)) {
         /* If the containing directory is valid but the path refers to an
          * ordinary file, set dir to the parent_dir and also return the name
          * of the file */
@@ -376,8 +378,6 @@ struct short_path *get_dir_from_path(struct dir *cur_dir, const char *path) {
     sp->dir = dir;
     sp->filename = next_dir_name;
     sp->is_dir = is_dir;
-    // printf("Is dir?: %d\n", sp->is_dir);
-    // printf("Filename: %s\n", sp->filename);
     return sp;
 }
 
