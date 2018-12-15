@@ -210,7 +210,8 @@ struct inode_disk {
 >> only one of two simultaneous attempts to remove a single file
 >> should succeed, as should only one of two simultaneous attempts to
 >> create a file with the same name, and so on.
-    Our functions on dir_entries call the appropriate functions to 
+
+    Our functions on dir_entries call the appropriate functions to
     modify the underlying inode objects, which contains most of the
     information we are manipulating. Thus our synchronization for
     the inodes (read/write lock and extension lock) are useful
@@ -220,10 +221,11 @@ struct inode_disk {
 >> is open by a process or if it is in use as a process's current
 >> working directory?  If so, what happens to that process's future
 >> file system operations?  If not, how do you prevent it?
+
     Our implementation does allow a directory to be removed if it is
     open by a process or in use as a current working directory. We
     thus handle directories similar to how we handle files, since
-    for files too we allow removing a file while it is open by a 
+    for files too we allow removing a file while it is open by a
     process.
 
     We only remove a directory, however, if it is empty (which we
@@ -238,17 +240,18 @@ struct inode_disk {
 
 >> B6: Explain why you chose to represent the current directory of a
 >> process the way you did.
+
     We initially thought of storing the current directory as a string,
     but realized this could have issues with memory (a path can be
     very long) and based on the operations we need to perform, inefficient.
-    
+
     Hence we realized we want to be able to access the inode quickly since
     that allows us to access all the underlying data for the backing data,
     and also maintain a position for use by readdir. The dir struct
     encompassed this very well, so we designed a way to navigate paths
     using these dirs as nodes in a linked list - since we store the parent
     dir of each file/dir, and each dir can access its children via lookup.
-    
+
     This pseudo-graph based approach allowed us to easily and efficiently
     traverse and search the filesystem.
 
@@ -301,10 +304,19 @@ struct rw_lock {
     move on to the next entry. Otherwise, we return it.
 
 >> C3: Describe your implementation of write-behind.
-    TODO
+
+    We created a separate kernel thread which loops over the entire cache every
+    10 timer ticks and individually writes back each cached block to the disk.
+    We make sure to only write back cache blocks that have actually been
+    accessed.
 
 >> C4: Describe your implementation of read-ahead.
-    TODO
+
+    We used a list as our queue. Whenever a call to file_cache_read is made, the
+    next sector (n + 1) is pushed back to the list. We also created a separate
+    kernel thread that then checks this list, pops an entry from the front of
+    the list, and adds the data from that sector on disk into the cache if it
+    was not already in the cache.
 
 ---- SYNCHRONIZATION ----
 
