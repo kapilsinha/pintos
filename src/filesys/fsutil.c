@@ -34,7 +34,9 @@ void fsutil_cat(char **argv) {
     char *buffer;
 
     printf("Printing '%s' to the console...\n", file_name);
-    file = filesys_open(file_name);
+    struct dir *root = dir_open_root();
+    file = filesys_open(root, file_name);
+    dir_close(root);
     if (file == NULL)
         PANIC("%s: open failed", file_name);
     buffer = palloc_get_page(PAL_ASSERT);
@@ -55,8 +57,10 @@ void fsutil_rm(char **argv) {
     const char *file_name = argv[1];
 
     printf("Deleting '%s'...\n", file_name);
-    if (!filesys_remove(file_name))
+    struct dir *root = dir_open_root();
+    if (!filesys_remove(root, file_name))
         PANIC("%s: delete failed\n", file_name);
+    dir_close(root);
 }
 
 /*! Extracts a ustar-format tar archive from the scratch block
@@ -108,11 +112,13 @@ void fsutil_extract(char **argv UNUSED) {
             printf("Putting '%s' into the file system...\n", file_name);
 
             /* Create destination file. */
-            if (!filesys_create(file_name, size))
+            struct dir *root = dir_open_root();
+            if (!filesys_create(root, file_name, size))
                 PANIC("%s: create failed", file_name);
-            dst = filesys_open(file_name);
+            dst = filesys_open(root, file_name);
             if (dst == NULL)
                 PANIC("%s: open failed", file_name);
+            dir_close(root);
 
             /* Do copy. */
             while (size > 0) {
@@ -168,7 +174,9 @@ void fsutil_append(char **argv) {
         PANIC("couldn't allocate buffer");
 
     /* Open source file. */
-    src = filesys_open(file_name);
+    struct dir *root = dir_open_root();
+    src = filesys_open(root, file_name);
+    dir_close(root);
     if (src == NULL)
         PANIC("%s: open failed", file_name);
     size = file_length(src);

@@ -232,28 +232,66 @@ int sys_wait(tid_t pid, struct intr_frame *f UNUSED) {
  */
 bool sys_create(const char *file_name, unsigned initial_size, struct intr_frame *f) {
     /* If the filename is invalid, immediately exit */
-    if (! valid_pointer((void *) file_name, f)) {
+    if (! valid_pointer((void *) file_name, f) || strlen(file_name) == 0) {
         sys_exit(-1, f);
     }
-    return filesys_create(file_name, initial_size);
+    struct thread *t = thread_current();
+
+    struct short_path *sp = get_dir_from_path(t->cur_dir, file_name);
+    bool ret = false;
+    /* Ensure that the path did not correspond to a directory */
+    if (! sp->is_dir && sp->dir && sp->filename) {
+        ret = filesys_create(sp->dir, sp->filename, initial_size);
+        dir_close(sp->dir);
+        free((char *) sp->filename);
+    }
+    free(sp);
+    return ret;
 }
 
 /*!
  *  Deletes the file called file. Returns true if successful, false otherwise. A
  *  file may be removed regardless of whether it is open or closed, and removing
- *  an open file does not close it.
+ *  an open file does not close it. A directory is considered to be a file and
+ *  can be removed as long as it is empty
  */
 bool sys_remove(const char *file_name, struct intr_frame *f UNUSED) {
-    return filesys_remove(file_name);
+    struct thread *t = thread_current();
+    struct short_path *sp = get_dir_from_path(t->cur_dir, file_name);
+    bool ret = false;
+    if (sp->dir && sp->filename) {
+        if (! sp->is_dir) {
+            /* If the path corresponds to an ordinary file, simply remove it */
+            ret = filesys_remove(sp->dir, sp->filename);
+            dir_close(sp->dir);
+        }
+        else if (dir_get_num_entries(sp->dir) == 0) {
+            /* If the path corresponds to a directory, remove it only if it
+             * is empty */
+            ret = filesys_remove(dir_get_parent_dir(sp->dir), sp->filename);
+            dir_close(dir_get_parent_dir(sp->dir));
+        }
+        free((char *) sp->filename);
+    }
+    free(sp);
+    return ret;
 }
 
-/* Opens the file with file_name and returns a file descriptor. */
+/*!
+ *  Opens the file or directory with file_name and returns a file descriptor.
+ *  A directory is treated like a file in that it has an inode and pos we 
+ *  store, so this function treats directories as ordinary files without
+ *  loss of generality
+ */
 int sys_open(const char *file_name, struct intr_frame *f) {
-    struct thread *t = thread_current();
     /* If the filename is invalid, immediately exit */
     if (! valid_pointer((void *) file_name, f)) {
         sys_exit(-1, f);
     }
+    /* If the filename is empty, just return immediately */
+    if (strlen(file_name) == 0)
+        return -1;
+    struct thread *t = thread_current();
     /*
      * If this thread has already opened this file, reopen it (with a new
      * file struct to track position and deny_write but same inode object)
@@ -268,6 +306,12 @@ int sys_open(const char *file_name, struct intr_frame *f) {
         printf("Malloc failed in open\n");
         return -1;
     }
+    struct short_path *sp = get_dir_from_path(t->cur_dir, file_name);
+    if (! sp->dir || ! sp->filename) {
+        free(sp);
+        return -1;
+    }
+
     /*
      * Iterate over all files this thread has opened for the current file we
      * seek to open
@@ -275,7 +319,7 @@ int sys_open(const char *file_name, struct intr_frame *f) {
     for (e = list_begin(&t->files); e != list_end(&t->files);
          e = list_next(e)) {
         open_file = list_entry(e, struct file_descriptor, elem);
-        if (strcmp(open_file->file_name, file_name) == 0) { // This file is open
+        if (strcmp(open_file->file_name, sp->filename) == 0) { // This file is open
             opened_previously = true;
             file_desp->file = file_reopen(open_file->file);
             break;
@@ -284,7 +328,12 @@ int sys_open(const char *file_name, struct intr_frame *f) {
 
     /* If this thread has not previously opened this file, call open */
     if (! opened_previously) {
-        file_struct = filesys_open(file_name);
+        if (sp->is_dir) {
+            file_struct = filesys_open(dir_get_parent_dir(sp->dir), sp->filename);
+        }
+        else {
+            file_struct = filesys_open(sp->dir, sp->filename);
+        }
         if (! file_struct) { // If the file could not be opened
             return -1;
         }
@@ -292,10 +341,15 @@ int sys_open(const char *file_name, struct intr_frame *f) {
     }
 
     file_desp->fd = t->fd_next++;
-    file_desp->file_name = (char *) file_name;
+    file_desp->file_name = (char *) sp->filename;
+
+    dir_close(sp->dir);
+    free((char *) sp->filename);
+    free(sp);
 
     /* Append to the file descriptor list for this thread */
     list_push_back(&t->files, &file_desp->elem);
+
     return file_desp->fd;
 }
 
@@ -311,7 +365,8 @@ int sys_filesize(int fd, struct intr_frame *f UNUSED) {
     return file_length(file);
 }
 
-/*! Reads a total of size bytes from the file open as fd into buffer. Returns
+/*!
+ *  Reads a total of size bytes from the file open as fd into buffer. Returns
  *  the total number of bytes read. 0 if at the end of the file, -1 if the
  *  file could not be read.
  */
@@ -320,7 +375,7 @@ int sys_read(int fd, const void *buffer, unsigned size, struct intr_frame *f) {
     if (!valid_pointer_range((void *) buffer, size, f) || fd == 1) {
         sys_exit(-1, f);
     }
-    if (fd == 0) { // STDIN
+    if (fd == 0) { /* STDIN */
         unsigned int i = 0;
         while (i < size) {
             *((char*)buffer++) = input_getc();
@@ -347,7 +402,12 @@ int sys_write(int fd, const void *buffer, unsigned size, struct intr_frame *f) {
     if (!valid_pointer_range((void *) buffer, size, f) || fd == 0) {
         sys_exit(-1, f);
     }
-    if (fd == 1) { // STDOUT
+    /* If the file descriptor corresponds to a directory, we cannot write to
+     * it, so we immediately exit */
+    if (sys_isdir(fd, f)) {
+        sys_exit(-1, f);
+    }
+    if (fd == 1) { /* STDOUT */
         putbuf(buffer, size);
         return size;
     }
@@ -543,6 +603,77 @@ void sys_munmap(mapid_t mapping, struct intr_frame *f UNUSED) {
     }
 }
 
+
+/*! Changes the current working directory of the current process to
+ *  the argument DIR. Returns true on success, false on failure.
+ */
+bool sys_chdir(const char *dir, struct intr_frame *f UNUSED) {    
+    struct thread *t = thread_current();
+    struct short_path *sp = get_dir_from_path(t->cur_dir, dir);
+    bool ret = false;
+    if (sp->is_dir && sp->dir && sp->filename) {
+        dir_close(t->cur_dir);
+        t->cur_dir = sp->dir;
+        free((char *) sp->filename);
+        ret = true;
+    }
+    free(sp);
+    return ret;
+}
+
+/*! Creates a directory named DIR (relative or absolute path).
+ *  Returns true on success and false on failure
+ *  Failure means DIR already exists or if any directory name
+ *  in DIR does not already exist
+ */
+bool sys_mkdir(const char *dir, struct intr_frame *f UNUSED) {
+    struct thread *t = thread_current();
+    struct short_path *sp = get_dir_from_path(t->cur_dir, dir);
+    bool ret = false;
+    if (! sp->is_dir && sp->dir && sp->filename) {
+        ret = filesys_mkdir(sp->dir, sp->filename);
+        dir_close(sp->dir);
+        free((char *) sp->filename);
+    }
+    free(sp);
+    return ret;
+}
+
+/*! Reads a directory entry from file descriptor FD (which must be
+ *  a directory).
+ *  If successful, returns true and stores the file name in NAME
+ *  Returns false on failure
+ */
+bool sys_readdir(int fd, char *name, struct intr_frame *f) {
+    /* Ensure that fd corresponds to a directory */
+    ASSERT(sys_isdir(fd, f));
+    struct file *file = fd_to_file(thread_current(), fd);
+    /* Cast file to a dir to extract the first two elements of the struct */
+    bool ret = dir_readdir((struct dir *) file, name);
+    return ret;
+}
+
+/*! Returns true if fd represents a directory,
+ *  false if fd represents an ordinary file
+ */
+bool sys_isdir(int fd, struct intr_frame *f UNUSED) {
+    struct file *file = fd_to_file(thread_current(), fd);
+    return file && file_isdir(file);
+}
+
+/*!
+ *  Returns the inode number of the inode associated with fd
+ *  (which may be an ordinary file or a directory). We use the
+ *  sector number as the inode number
+ */
+int sys_inumber(int fd, struct intr_frame *f UNUSED) {
+    struct file *file = fd_to_file(thread_current(), fd);
+    if (! file) {
+        return -1;
+    }
+    return file_inumber(file);
+}
+
 /*! Called for system calls that are not implemented. */
 void sys_nosys(struct intr_frame *f UNUSED) {
     printf("ENOSYS: Function not implemented.\n");
@@ -558,6 +689,8 @@ static void syscall_handler(struct intr_frame *f) {
     int fd;
     const void *buffer;
     const char *file_name;
+    const char *dir;
+    char *name;
     unsigned int size, initial_size, position;
     int status;
     tid_t pid;
@@ -649,6 +782,32 @@ static void syscall_handler(struct intr_frame *f) {
         case SYS_MUNMAP:
             mapping = (mapid_t) peek_stack(f, 1);
             sys_munmap(mapping, f);
+            break;
+
+        case SYS_CHDIR:
+            dir = (const char *) peek_stack(f, 1);
+            f->eax = sys_chdir(dir, f);
+            break;
+
+        case SYS_MKDIR:
+            dir = (const char *) peek_stack(f, 1);
+            f->eax = sys_mkdir(dir, f);
+            break;
+
+        case SYS_READDIR:
+            fd = (int) peek_stack(f, 1);
+            name = (char *) peek_stack(f, 2);
+            f->eax = sys_readdir(fd, name, f);
+            break;
+
+        case SYS_ISDIR:
+            fd = (int) peek_stack(f, 1);
+            f->eax = sys_isdir(fd, f);
+            break;
+
+        case SYS_INUMBER:
+            fd = (int) peek_stack(f, 1);
+            f->eax = sys_inumber(fd, f);
             break;
 
         default:

@@ -11,6 +11,7 @@
 #include <stdint.h>
 #include <threads/synch.h>
 #include <filesys/file.h>
+#include <filesys/directory.h>
 #include "hash.h"
 
 /*! States in a thread's life cycle. */
@@ -166,6 +167,11 @@ struct thread {
     struct hash mmap_file_table;   /*!< Mem-map file table. */
     /*!< Mapping of the next opened mmap file by this thread */
     int mapping_next;
+    /**@}*/
+
+    /*! Used for implementing subdirectories for filesys assignment. */
+    /**@{*/
+    struct dir *cur_dir;       /*!< Thread's current directory */
     /**@}*/
 
     /*! Owned by thread.c. */

@@ -129,3 +129,16 @@ off_t file_tell(struct file *file) {
     return file->pos;
 }
 
+/*! Returns true if file struct represents a directory,
+ *  false if file struct represents an ordinary file
+ */
+bool file_isdir (struct file *file) {
+    ASSERT(file != NULL);
+    return inode_isdir(file->inode);
+}
+
+/*! Returns the inumbersize of FILE in bytes. */
+int file_inumber(struct file *file) {
+    ASSERT(file != NULL);
+    return (int) inode_get_inumber(file->inode);
+}

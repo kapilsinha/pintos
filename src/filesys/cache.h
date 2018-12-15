@@ -21,7 +21,7 @@ struct file_cache_entry {
     bool accessed;          /* 1 if data has been accessed, else 0 */
     bool dirty;             /* 1 if data has been written to, else 0 */
     struct rw_lock rw_lock; /* Per cache entry read-write lock */
-    struct lock evict_lock; /* TODO: Why do I need this??? */
+    struct lock evict_lock; /* Lock that must be acquired on evict/load */
 };
 
 void file_cache_table_init(void);
@@ -38,6 +38,8 @@ void file_cache_write(block_sector_t sector, void *buffer, off_t size,
 
 bool load_from_disk(struct file_cache_entry *cache_entry,
     block_sector_t sector);
+
+void write_cache(void);
 
 /* Eviction policy */
 struct file_cache_entry *evict_block(struct file_cache_entry *to_evict);

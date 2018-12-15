@@ -1,13 +1,14 @@
 #include "cache.h"
 #include "filesys/filesys.h"
 #include <string.h>
+#include "threads/interrupt.h"
 
 /* File cache table containing all the cache entries */
 static struct file_cache_entry file_cache_table[MAX_CACHE_SIZE];
 /* Index in the table that contains a cache entry */
 static block_sector_t clock_hand;
 
-/* Initializes the file cache table. */
+/*! Initializes the file cache table. */
 void file_cache_table_init(void) {
     /* Initialize the file cache table with empty not-in-use blocks */
     for (int i = 0; i < MAX_CACHE_SIZE; i++) {
@@ -21,6 +22,20 @@ void file_cache_table_init(void) {
     }
     /* Initialize the clock hand to the first element in the cache table */
     clock_hand = 0;
+}
+
+/*! Performs the cache write-back to backing file */
+void write_cache(void) {
+    struct file_cache_entry *entry;
+    for (int i = 0; i < MAX_CACHE_SIZE; i++) {
+        entry = &file_cache_table[i];
+        if (entry->sector == 0) continue;
+        lock_acquire(&entry->evict_lock);
+        rw_write_acquire(&entry->rw_lock);
+        block_write(fs_device, entry->sector, entry->data);
+        rw_write_release(&entry->rw_lock);
+        lock_release(&entry->evict_lock);
+    }
 }
 
 /*!
@@ -62,15 +77,12 @@ struct file_cache_entry *get_unused_cache_entry(void) {
  */
 struct file_cache_entry *find_file_cache_entry(block_sector_t sector,
     bool active) {
-    //printf("FIND FILE CACHE ENTRY\n");
     /* File cache entry that will be returned */
     struct file_cache_entry *entry = NULL;
-    // TODO: DON'T USE A GLOBAL LOCK!!!
     for (int i = 0; i < MAX_CACHE_SIZE; i++) {
-        if (file_cache_table[i].sector == sector 
+        if (file_cache_table[i].sector == sector
             && file_cache_table[i].in_use) {
             entry = &file_cache_table[i];
-            //printf("Found entry in cache\n");
             break;
         }
     }
@@ -79,16 +91,11 @@ struct file_cache_entry *find_file_cache_entry(block_sector_t sector,
     if (entry == NULL && active) {
         /* Continue to attempt to load the cache entry from disk into an
          * available sector until we successfully do so */
-        //printf("Stuck at find_file_cache_entry?\n");
         while (! success) {
             entry = get_unused_cache_entry();
             success = load_from_disk(entry, sector);
-            //printf("Loaded from disk\n");
         }
-        //printf("Not stuck at find_file_cache_entry\n");
     }
-    //debug_word_dump(entry->data, BLOCK_SECTOR_SIZE);
-    //printf("FOUND FILE CACHE ENTRY\n");
     return entry;
 }
 
@@ -110,7 +117,6 @@ void file_cache_read(block_sector_t sector, void *buffer,
             rw_read_release(&cache_entry->rw_lock);
         }
     }
-    //printf("Not stuck at file_cache_read\n");
     memcpy(buffer, cache_entry->data + offset, size);
     cache_entry->accessed = true;
     rw_read_release(&cache_entry->rw_lock);
@@ -123,7 +129,6 @@ void file_cache_write(block_sector_t sector, void *buffer,
     off_t size, off_t offset) {
     struct file_cache_entry *cache_entry;
     bool success = false;
-    //printf("Stuck at file_cache_write?\n");
     while (! success) {
         cache_entry = find_file_cache_entry(sector, true);
         rw_write_acquire(&cache_entry->rw_lock);
@@ -134,7 +139,6 @@ void file_cache_write(block_sector_t sector, void *buffer,
             rw_write_release(&cache_entry->rw_lock);
         }
     }
-    //printf("Not stuck at file_cache_write\n");
     memcpy(cache_entry->data + offset, buffer, size);
     cache_entry->accessed = true;
     cache_entry->dirty = true;
@@ -171,15 +175,14 @@ bool load_from_disk(struct file_cache_entry *cache_entry,
     return true;
 }
 
-/*! 
+/*!
  *  Evicts the to_evict file_cache_entry. If the cache entry is dirty,
- *  it is written back to disk. The writer's lock is acquired prior to 
+ *  it is written back to disk. The writer's lock is acquired prior to
  *  eviction to ensure we hav exclusive access to the cache entry.
  *  The cache entry being evicted must be in use (otherwise there is no
  *  need to evict it).
  */
 struct file_cache_entry *evict_block(struct file_cache_entry *to_evict) {
-    //printf("EVICTING SOMETHING\n");
     lock_acquire(&to_evict->evict_lock);
     rw_write_acquire(&to_evict->rw_lock);
     ASSERT(to_evict != NULL);
@@ -208,7 +211,6 @@ struct file_cache_entry *evict_block(struct file_cache_entry *to_evict) {
 struct file_cache_entry *evict_sector(block_sector_t sector) {
     struct file_cache_entry *to_evict;
     bool success = false;
-    //printf("Stuck at evict_sector?\n");
     while (! success) {
         to_evict = find_file_cache_entry(sector, false);
         if (! to_evict) {
@@ -222,7 +224,6 @@ struct file_cache_entry *evict_sector(block_sector_t sector) {
             rw_write_release(&to_evict->rw_lock);
         }
     }
-    //printf("Not stuck at evict_sector\n");
     ASSERT(to_evict != NULL);
     ASSERT(to_evict->in_use);
     /* Write the data from this entry back to disk if the block is dirty */

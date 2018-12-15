@@ -347,7 +347,7 @@ bool load(const char *file_name, void (**eip) (void), void **esp) {
         goto done;
     }
 
-    file = filesys_open(command_name);
+    file = filesys_open(t->cur_dir, command_name);
     if (file == NULL) {
         printf("load: %s: open failed\n", command_name);
         goto done;
