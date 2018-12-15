@@ -5,6 +5,7 @@
 #include "filesys/file.h"
 #include "filesys/free-map.h"
 #include "filesys/inode.h"
+#include "threads/thread.h"
 
 /*! Partition that contains the file system. */
 struct block *fs_device;
@@ -25,6 +26,8 @@ void filesys_init(bool format) {
         do_format();
 
     free_map_open();
+    thread_create("write-behind", 0, write_cache_thread, NULL);
+    thread_create("read-ahead", 0, read_ahead_thread, NULL);
 }
 
 /*! Shuts down the file system module, writing any unwritten data to disk. */

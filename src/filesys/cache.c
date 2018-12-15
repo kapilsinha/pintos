@@ -2,11 +2,22 @@
 #include "filesys/filesys.h"
 #include <string.h>
 #include "threads/interrupt.h"
+#include "threads/thread.h"
+#include "devices/timer.h"
+
+/* This struct is used to add entries to the read ahead list. */
+struct read_ahead_entry {
+    block_sector_t sector;
+    struct list_elem elem;
+};
 
 /* File cache table containing all the cache entries */
 static struct file_cache_entry file_cache_table[MAX_CACHE_SIZE];
 /* Index in the table that contains a cache entry */
 static block_sector_t clock_hand;
+
+static struct list read_ahead_list;
+static struct lock read_list_lock;
 
 /*! Initializes the file cache table. */
 void file_cache_table_init(void) {
@@ -22,9 +33,12 @@ void file_cache_table_init(void) {
     }
     /* Initialize the clock hand to the first element in the cache table */
     clock_hand = 0;
+    /* Initialize the list of things to read ahead */
+    list_init(&read_ahead_list);
+    lock_init(&read_list_lock);
 }
 
-/*! Performs the cache write-back to backing file */
+/*! Performs the cache write-back to backing file. */
 void write_cache(void) {
     struct file_cache_entry *entry;
     for (int i = 0; i < MAX_CACHE_SIZE; i++) {
@@ -35,6 +49,54 @@ void write_cache(void) {
         block_write(fs_device, entry->sector, entry->data);
         rw_write_release(&entry->rw_lock);
         lock_release(&entry->evict_lock);
+    }
+}
+
+/*! This function is used to create the kernel thread that writes back the
+ * contents of the cache periodically.
+ */
+void write_cache_thread(void) {
+    while (true) {
+        write_cache();
+        /* Sleep for 10 timer ticks. */
+        timer_sleep(10);
+    }
+}
+
+/*! Adds the sector to the list of things to read ahead for the cache read ahead
+ * function.
+ */
+void cache_read_add(block_sector_t sector) {
+    struct read_ahead_entry *entry = malloc(sizeof(struct read_ahead_entry));
+    entry->sector = sector;
+    lock_acquire(&read_list_lock);
+    list_push_back(&read_ahead_list, &entry->elem);
+    lock_release(&read_list_lock);
+}
+
+/*! This function will continuously pop elements from the front of the read
+ * ahead list and add them to the cache.
+ */
+void read_ahead_thread(void) {
+    struct read_ahead_entry *entry;
+    while (true) {
+
+        while (list_empty(&read_ahead_list)) {
+            thread_yield();
+        }
+
+        while (!list_empty(&read_ahead_list)) {
+            ASSERT(!list_empty(&read_ahead_list));
+            /* Pop an element from the front of the list and read it into cache. */
+            entry = list_entry(list_pop_front(&read_ahead_list),
+            struct read_ahead_entry, elem);
+            ASSERT(entry);
+            if (entry->sector != 0) {
+                find_file_cache_entry(entry->sector, true);
+                printf("Sector : %lu\n", entry->sector);
+            }
+        }
+        timer_sleep(15);
     }
 }
 
@@ -93,6 +155,7 @@ struct file_cache_entry *find_file_cache_entry(block_sector_t sector,
          * available sector until we successfully do so */
         while (! success) {
             entry = get_unused_cache_entry();
+            ASSERT(entry);
             success = load_from_disk(entry, sector);
         }
     }
@@ -106,7 +169,6 @@ void file_cache_read(block_sector_t sector, void *buffer,
     off_t size, off_t offset) {
     struct file_cache_entry *cache_entry;
     bool success = false;
-    //printf("Stuck at file_cache_read?\n");
     while (! success) {
         cache_entry = find_file_cache_entry(sector, true);
         rw_read_acquire(&cache_entry->rw_lock);

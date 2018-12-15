@@ -40,6 +40,9 @@ bool load_from_disk(struct file_cache_entry *cache_entry,
     block_sector_t sector);
 
 void write_cache(void);
+void write_cache_thread(void);
+void cache_read_add(block_sector_t sector);
+void read_ahead_thread(void);
 
 /* Eviction policy */
 struct file_cache_entry *evict_block(struct file_cache_entry *to_evict);

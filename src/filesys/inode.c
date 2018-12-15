@@ -81,12 +81,12 @@ struct file_cache_entry *get_metadata(block_sector_t sector) {
             rw_read_release(&metadata->rw_lock);
         }
     }
-    
+
     return metadata;
 }
 
 /*!
- * Transforms a contiguous sector number to the actual sector number since 
+ * Transforms a contiguous sector number to the actual sector number since
  * files are not actually contiguous on disk.
  */
 block_sector_t sector_transform(struct inode *inode, block_sector_t sector) {
@@ -135,8 +135,14 @@ static block_sector_t byte_to_sector(struct inode *inode, off_t pos) {
     if (pos / BLOCK_SECTOR_SIZE >= MAX_SECTORS) {
         PANIC("byte_to_sector: Cannot handle sector of this size!");
     }
-    if (pos < inode_length(inode))
+    if (pos < inode_length(inode)) {
+        /* Add sector to read-ahead list */
+        if (pos / BLOCK_SECTOR_SIZE < bytes_to_sectors(inode_length(inode))) {
+            cache_read_add(sector_transform(inode,
+                pos / BLOCK_SECTOR_SIZE + 1));
+        }
         return sector_transform(inode, pos / BLOCK_SECTOR_SIZE);
+    }
     else
         return -1;
 }
