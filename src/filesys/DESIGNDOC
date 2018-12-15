@@ -12,6 +12,7 @@ Kapil Sinha <ksinha@caltech.edu>
 Karthik Nair <knair@caltech.edu>
 
 >> Specify how many late tokens you are using on this assignment:
+1
 
 >> What is the Git repository and commit hash for your submission?
 
@@ -23,9 +24,20 @@ Karthik Nair <knair@caltech.edu>
 >> If you have any preliminary comments on your submission, notes for the
 >> TAs, or extra credit, please give them here.
 
+    Note we asked a TA in advance if we can use a late token and he approved.
+
+    We built on project 5 and enabled VM for extra credit. Also, there was
+    slight discrepancy in test results between the team members' computers but
+    ultimately all the tests except for dir-vine-persistence work on one of
+    ours. Since term is ending and we may not have as much access to our
+    computers, we will message a video of our code running the tests to the
+    TAs for proof.
+
 >> Please cite any offline or online sources you consulted while
 >> preparing your submission, other than the Pintos documentation, course
 >> text, lecture notes, and course instructors.
+
+    N/A
 
 		     INDEXED AND EXTENSIBLE FILES
 		     ============================
@@ -44,9 +56,11 @@ struct inode_disk {
     block_sector_t direct[NUM_DIRECT];      /*!< Direct nodes. */
     block_sector_t indirect;                /*!< Indirect nodes. */
     block_sector_t double_indirect;         /*!< Double indirect nodes. */
+    unsigned is_dir;                        /*!< 1 if dir, 0 if file. */
+    block_sector_t parent_dir_sector;       /*!< Parent dir's inode->sector */
     off_t length;                           /*!< File size in bytes. */
     unsigned magic;                         /*!< Magic number. */
-    uint32_t unused[112];                   /*!< Not used. */
+    uint32_t unused[110];                   /*!< Not used. */
 };
 
 /*! In-memory inode. */
@@ -85,9 +99,11 @@ struct inode {
 
     We added an extension lock to our inode struct. This lock must be acquired
     for both reads and writes. For reads, the lock is simply acquired to check
-    if we are trying to read past the end of the file. This keeps A from reading
+    if we are trying to read past the end of file. This keeps A from reading
     while B is extending the file because B holds this extension lock until it
-    is completely done extending the file and writing all of its data.
+    is completely done extending the file and writing all of its data. Thus the
+    lock is not held for long by readers, which easily allows for several
+    readers to simultaneously read a file.
 
 >> A5: Explain how your synchronization design provides "fairness".
 >> File access is "fair" if readers cannot indefinitely block writers
@@ -97,14 +113,19 @@ struct inode {
 >> from reading the file.
 
     We implemented our own shared-exclusive lock which is used whenever trying
-    to read or write to a cache entry. Our lock implementation does not allow
-    an additional reader if writers are waiting to keep writers from getting
-    starved.
+    to read or write to a cache entry; this struct is called rw_lock and is
+    implemented in threads/synch.c. See the Data Structures section under
+    Buffer Cache for more detail on this read-write lock.
+
     Since we have a shared-exclusive lock, readers can never block other
-    readers. Also, since when a writer releases the lock, it broadcasts to all
-    readers to allow them to read, and until this set number of permitted
+    readers. Also, when a writer releases the lock, it broadcasts to all
+    readers to allow them to read. Until this set number of permitted
     readers are done reading, no other writers are allowed access to the lock.
-    This way, neither readers nor writers can get starved.
+    Similarly, readers may not acquire the lock if there is a writer waiting,
+    and the last reader signals the writer to allow it to access the lock.
+    This way, neither readers nor writers can get starved, with readers
+    allowing writers to access next when the last reader finishes and
+    writers allowing readers to access next when the writer finishes.
 
 ---- RATIONALE ----
 
@@ -117,7 +138,8 @@ struct inode {
     Yes, our inode structure is a multilevel index. We tried to keep our
     implementation as simple as possible and therefore kept the number of
     direct, indirect, and doubly indirect blocks to a minimum. Thus, we used
-    12 direct blocks, 1 indirect block, and 1 doubly indirect block.
+    12 direct blocks, 1 indirect block, and 1 doubly indirect block. Our
+    design was heavily based on the ext2 file system.
 
 			    SUBDIRECTORIES
 			    ==============
@@ -128,14 +150,59 @@ struct inode {
 >> `struct' member, global or static variable, `typedef', or
 >> enumeration.  Identify the purpose of each in 25 words or less.
 
-TODO
+struct short_path {
+    struct dir *dir;      /* Directory containing the file */
+    const char *filename; /* Name of the file the path refers to */
+    bool is_dir;          /* True if filename is a dir,
+                             false if it is an ordinary file */
+};
+    The above struct is mainly just used to package information together
+    from our parsing method.
+
+struct thread {
+    ...
+    /*! Used for implementing subdirectories for filesys assignment. */
+    /**@{*/
+    struct dir *cur_dir;       /*!< Thread's current directory */
+    /**@}*/
+}
+    We associated a cur_dir for each process/thread so it can maintain
+    its own current directory.
+
+struct inode_disk {
+    block_sector_t direct[NUM_DIRECT];      /*!< Direct nodes. */
+    block_sector_t indirect;                /*!< Indirect nodes. */
+    block_sector_t double_indirect;         /*!< Double indirect nodes. */
+    unsigned is_dir;                        /*!< 1 if dir, 0 if file. */
+    block_sector_t parent_dir_sector;       /*!< Parent dir's inode->sector */
+    off_t length;                           /*!< File size in bytes. */
+    unsigned magic;                         /*!< Magic number. */
+    uint32_t unused[110];                   /*!< Not used. */
+};
+    We added a flag to each inode_disk saying whether it is a directory
+    and also store the parent's inode->sector.
 
 ---- ALGORITHMS ----
 
 >> B2: Describe your code for traversing a user-specified path.  How
 >> do traversals of absolute and relative paths differ?
 
-TODO
+    We immediately determine if the path is an absolute or relative
+    path based on whether the path does or does not start with a '/',
+    respectively. After that, we consider each portion of the path
+    separated by '/'s and update our current directory iteratively.
+    If the portion is a '.' or '..', then we stay at the current
+    or go to the parent directory (using the parent_dir_sector we
+    added to this directory's inode's metadata). Otherwise, we use
+    lookup to find a file with the name we are searching for, and if
+    the directory exists, we continue iteratively (else we know the
+    path is invalid). We linearly scan our path and do linked list
+    like manipulations to find our final directory, which is very
+    efficient for the task.
+
+    Then at the end, depending on whether the path is invalid or
+    refers to an ordinary file or a directory, we return our result
+    in short_path, which is sufficient to do all our syscalls.
 
 ---- SYNCHRONIZATION ----
 
@@ -143,16 +210,47 @@ TODO
 >> only one of two simultaneous attempts to remove a single file
 >> should succeed, as should only one of two simultaneous attempts to
 >> create a file with the same name, and so on.
+    Our functions on dir_entries call the appropriate functions to 
+    modify the underlying inode objects, which contains most of the
+    information we are manipulating. Thus our synchronization for
+    the inodes (read/write lock and extension lock) are useful
+    to prevent races for directory entries too.
 
 >> B5: Does your implementation allow a directory to be removed if it
 >> is open by a process or if it is in use as a process's current
 >> working directory?  If so, what happens to that process's future
 >> file system operations?  If not, how do you prevent it?
+    Our implementation does allow a directory to be removed if it is
+    open by a process or in use as a current working directory. We
+    thus handle directories similar to how we handle files, since
+    for files too we allow removing a file while it is open by a 
+    process.
+
+    We only remove a directory, however, if it is empty (which we
+    check easily via the in use flag of the dir_entries) and in
+    the path parsing method, we consider a path that tries to use
+    a removed directory invalid. That is, if a directory has been
+    removed and some path attempts to go to it or through it (via
+    . or .. especially if a process has it as its current directory),
+    we deem the path invalid.
 
 ---- RATIONALE ----
 
 >> B6: Explain why you chose to represent the current directory of a
 >> process the way you did.
+    We initially thought of storing the current directory as a string,
+    but realized this could have issues with memory (a path can be
+    very long) and based on the operations we need to perform, inefficient.
+    
+    Hence we realized we want to be able to access the inode quickly since
+    that allows us to access all the underlying data for the backing data,
+    and also maintain a position for use by readdir. The dir struct
+    encompassed this very well, so we designed a way to navigate paths
+    using these dirs as nodes in a linked list - since we store the parent
+    dir of each file/dir, and each dir can access its children via lookup.
+    
+    This pseudo-graph based approach allowed us to easily and efficiently
+    traverse and search the filesystem.
 
 			     BUFFER CACHE
 			     ============
@@ -203,8 +301,10 @@ struct rw_lock {
     move on to the next entry. Otherwise, we return it.
 
 >> C3: Describe your implementation of write-behind.
+    TODO
 
 >> C4: Describe your implementation of read-ahead.
+    TODO
 
 ---- SYNCHRONIZATION ----
 
@@ -249,13 +349,22 @@ website.
 
 >> In your opinion, was this assignment, or any one of the three problems
 >> in it, too easy or too hard?  Did it take too long or too little time?
+This assignment was definitely tricky, and unexpectedly so. It seemed like
+several parts were implied to be straightforward but weren't - including
+the buffer cache and subdirectories!
 
 >> Did you find that working on a particular part of the assignment gave
 >> you greater insight into some aspect of OS design?
+The concept of the buffer cache and implementing that was definitely a
+good experience to solidify the concept of maximizing quick operations.
 
 >> Is there some particular fact or hint we should give students in
 >> future quarters to help them solve the problems?  Conversely, did you
 >> find any of our guidance to be misleading?
+Buffer cache is NOT straightforward. Transitioning to local (not global)
+locks can be very tricky. Also, some more guidance for the subdirectories
+portion would be nice. It seemed like we had to come up with a design
+from scratch, which was quite difficult.
 
 >> Do you have any suggestions for the TAs to more effectively assist
 >> students in future quarters?
