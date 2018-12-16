@@ -45,7 +45,7 @@ struct dir * dir_open(struct inode *inode) {
     else {
         inode_close(inode);
         free(dir);
-        return NULL; 
+        return NULL;
     }
 }
 
@@ -249,7 +249,7 @@ bool dir_readdir(struct dir *dir, char name[NAME_MAX + 1]) {
         if (e.in_use) {
             strlcpy(name, e.name, NAME_MAX + 1);
             return true;
-        } 
+        }
     }
     return false;
 }
@@ -347,7 +347,7 @@ struct short_path *get_dir_from_path(struct dir *cur_dir, const char *path) {
         }
     }
     /* If the parent_dir is valid, determine if the path we seek corresponds
-     * to a directory (dir is also valid) or for an ordinary file 
+     * to a directory (dir is also valid) or for an ordinary file
      * (dir is invalid) */
     if (! parent_dir) {
         /* If the containing directory is invalid, set dir to NULL */
@@ -379,8 +379,4 @@ struct short_path *get_dir_from_path(struct dir *cur_dir, const char *path) {
     sp->filename = next_dir_name;
     sp->is_dir = is_dir;
     return sp;
-}
-
-void print_absolute_path(struct dir *dir UNUSED) {
-    printf("ye\n");
 }

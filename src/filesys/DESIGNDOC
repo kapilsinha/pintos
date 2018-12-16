@@ -361,18 +361,21 @@ website.
 
 >> In your opinion, was this assignment, or any one of the three problems
 >> in it, too easy or too hard?  Did it take too long or too little time?
+
 This assignment was definitely tricky, and unexpectedly so. It seemed like
 several parts were implied to be straightforward but weren't - including
 the buffer cache and subdirectories!
 
 >> Did you find that working on a particular part of the assignment gave
 >> you greater insight into some aspect of OS design?
+
 The concept of the buffer cache and implementing that was definitely a
 good experience to solidify the concept of maximizing quick operations.
 
 >> Is there some particular fact or hint we should give students in
 >> future quarters to help them solve the problems?  Conversely, did you
 >> find any of our guidance to be misleading?
+
 Buffer cache is NOT straightforward. Transitioning to local (not global)
 locks can be very tricky. Also, some more guidance for the subdirectories
 portion would be nice. It seemed like we had to come up with a design
@@ -382,3 +385,7 @@ from scratch, which was quite difficult.
 >> students in future quarters?
 
 >> Any other comments?
+
+I think it would be better if the amount of points for all of the tests added
+up to a 100 or some definitive number because it seems like a lot of points
+can be taken off just for failing a single test. 

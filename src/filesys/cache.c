@@ -93,7 +93,6 @@ void read_ahead_thread(void) {
             ASSERT(entry);
             if (entry->sector != 0) {
                 find_file_cache_entry(entry->sector, true);
-                printf("Sector : %lu\n", entry->sector);
             }
         }
         timer_sleep(15);

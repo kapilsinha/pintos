@@ -44,6 +44,4 @@ bool dir_readdir(struct dir *, char name[NAME_MAX + 1]);
 
 /* Processing a directory path */
 struct short_path *get_dir_from_path(struct dir *cur_dir, const char *path);
-void print_absolute_path(struct dir *dir);
 #endif /* filesys/directory.h */
-

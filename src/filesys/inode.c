@@ -101,24 +101,24 @@ block_sector_t sector_transform(struct inode *inode, block_sector_t sector) {
     /* Single indirect block, we need to read in the array from disk */
     else if (sector >= NUM_DIRECT && sector < NUM_DOUBLE) {
         block_sector_t indirect;
-        file_cache_read(data.indirect, &indirect, sizeof(block_sector_t),
-            (sector - NUM_DIRECT) * sizeof(block_sector_t));
+        file_cache_read(data.indirect, &indirect, SEC_SIZE,
+            (sector - NUM_DIRECT) * SEC_SIZE);
         return indirect;
     }
     else if (sector >= NUM_DOUBLE && sector < MAX_SECTORS) {
-        block_sector_t double_indirect[NUM_SECTORS];
-        block_sector_t sector_indirect[NUM_SECTORS];
+        block_sector_t double_indirect;
+        block_sector_t sector_indirect;
         /* First, read in the double indirect sector */
-        file_cache_read(data.double_indirect, double_indirect,
-            BLOCK_SECTOR_SIZE, 0);
-        /* Determine which double indirect sector we need */
-        block_sector_t first_indirect = (sector - NUM_DOUBLE) / NUM_SECTORS;
-        block_sector_t second_indirect = (sector - NUM_DOUBLE) % NUM_SECTORS;
+        file_cache_read(data.double_indirect, &double_indirect,
+            sizeof(block_sector_t),
+            (sector - NUM_DOUBLE) / NUM_SECTORS * SEC_SIZE);
         /* Read in the sector that actually contains the pointers to data */
-        file_cache_read(double_indirect[first_indirect], sector_indirect,
-            BLOCK_SECTOR_SIZE, 0);
-        return sector_indirect[second_indirect];
+        file_cache_read(double_indirect, &sector_indirect,
+            sizeof(block_sector_t),
+            (sector - NUM_DOUBLE) % NUM_SECTORS * SEC_SIZE);
+        return sector_indirect;
     }
+
     else {
         PANIC("Cannot handle sector number greater than MAX_SECTORS!");
     }
@@ -137,10 +137,10 @@ static block_sector_t byte_to_sector(struct inode *inode, off_t pos) {
     }
     if (pos < inode_length(inode)) {
         /* Add sector to read-ahead list */
-        if (pos / BLOCK_SECTOR_SIZE < bytes_to_sectors(inode_length(inode))) {
-            cache_read_add(sector_transform(inode,
-                pos / BLOCK_SECTOR_SIZE + 1));
-        }
+        // if (pos / BLOCK_SECTOR_SIZE < bytes_to_sectors(inode_length(inode))) {
+        //     cache_read_add(sector_transform(inode,
+        //         pos / BLOCK_SECTOR_SIZE + 1));
+        // }
         return sector_transform(inode, pos / BLOCK_SECTOR_SIZE);
     }
     else
@@ -228,7 +228,7 @@ bool inode_create(block_sector_t parent_dir_sector, block_sector_t sector,
 
     disk_inode = calloc(1, sizeof *disk_inode);
     if (disk_inode == NULL) return false;
-    memset(disk_inode->direct, 0, 12 * sizeof(block_sector_t));
+    memset(disk_inode->direct, 0, 12 * SEC_SIZE);
     disk_inode->indirect = 0;
     disk_inode->double_indirect = 0;
     disk_inode->is_dir = is_dir ? 1 : 0;

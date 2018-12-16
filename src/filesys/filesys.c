@@ -27,7 +27,7 @@ void filesys_init(bool format) {
 
     free_map_open();
     thread_create("write-behind", 0, write_cache_thread, NULL);
-    thread_create("read-ahead", 0, read_ahead_thread, NULL);
+    //thread_create("read-ahead", 0, read_ahead_thread, NULL);
 }
 
 /*! Shuts down the file system module, writing any unwritten data to disk. */
