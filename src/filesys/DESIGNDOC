@@ -17,7 +17,7 @@ Karthik Nair <knair@caltech.edu>
 >> What is the Git repository and commit hash for your submission?
 
    Repository URL: https://github.com/kapilsinha/pintos
-   commit ...
+   commit d0f05c5a5aadc43737cc706a4759d4d232b9044f
 
 ---- PRELIMINARIES ----
 
@@ -388,4 +388,4 @@ from scratch, which was quite difficult.
 
 I think it would be better if the amount of points for all of the tests added
 up to a 100 or some definitive number because it seems like a lot of points
-can be taken off just for failing a single test. 
+can be taken off just for failing a single test.
